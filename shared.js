@@ -4,13 +4,13 @@
 
 // --- Firebase Config (replace with real values) ---
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT.firebaseapp.com",
-  databaseURL: "https://YOUR_PROJECT-default-rtdb.europe-west1.firebasedatabase.app",
-  projectId: "YOUR_PROJECT",
-  storageBucket: "YOUR_PROJECT.appspot.com",
-  messagingSenderId: "000000000000",
-  appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyDh0smzZqkiCqUV93_LsoMaml0698noysQ",
+  authDomain: "flexfundament-app.firebaseapp.com",
+  databaseURL: "https://flexfundament-app-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "flexfundament-app",
+  storageBucket: "flexfundament-app.firebasestorage.app",
+  messagingSenderId: "149430854074",
+  appId: "1:149430854074:web:71af3453ca5e6f1b1a7d83"
 };
 
 // Initialize Firebase
