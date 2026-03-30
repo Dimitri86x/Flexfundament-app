@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Flexfundament App – Dashboard</title>
+  <link rel="stylesheet" href="shared.css">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#1565c0">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+</head>
+<body>
+
+  <div class="page" id="page">
+    <!-- Greeting -->
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:var(--spacing-md);">
+      <div>
+        <h1 style="font-size:1.25rem; font-weight:600;" id="greeting">Hallo!</h1>
+        <p class="text-secondary" style="font-size:0.85rem;" id="greetingDate"></p>
+      </div>
+      <button class="btn btn-secondary" id="btnLogout" style="font-size:0.8rem;">Abmelden</button>
+    </div>
+
+    <!-- Quick Buttons -->
+    <div class="quick-buttons">
+      <a href="projects.html?new=1" class="quick-btn">
+        <span class="quick-btn-icon">&#128204;</span>
+        Projekt anlegen
+      </a>
+      <a href="reports.html?new=1" class="quick-btn">
+        <span class="quick-btn-icon">&#128221;</span>
+        Einsatzbericht
+      </a>
+      <a href="drives.html?new=1" class="quick-btn">
+        <span class="quick-btn-icon">&#128663;</span>
+        Fahrt erfassen
+      </a>
+      <a href="costs.html?new=1" class="quick-btn">
+        <span class="quick-btn-icon">&#128176;</span>
+        Kosten erfassen
+      </a>
+      <a href="documents.html?new=1" class="quick-btn">
+        <span class="quick-btn-icon">&#128194;</span>
+        Dokument hochladen
+      </a>
+    </div>
+
+    <!-- Today's Appointments -->
+    <div class="section-title">Heutige Termine</div>
+    <div id="widgetToday" class="card">
+      <p class="list-empty">Noch keine Daten</p>
+    </div>
+
+    <!-- Recent Projects -->
+    <div class="section-title">Letzte Projekte</div>
+    <div id="widgetProjects" class="card">
+      <p class="list-empty">Noch keine Daten</p>
+    </div>
+
+    <!-- Open Reports -->
+    <div class="section-title">Offene Einsatzberichte</div>
+    <div id="widgetReports" class="card">
+      <p class="list-empty">Noch keine Daten</p>
+    </div>
+
+    <!-- Recent Drives -->
+    <div class="section-title">Letzte Fahrten</div>
+    <div id="widgetDrives" class="card">
+      <p class="list-empty">Noch keine Daten</p>
+    </div>
+
+    <!-- Open Costs -->
+    <div class="section-title">Offene Kosten</div>
+    <div id="widgetCosts" class="card">
+      <p class="list-empty">Noch keine Daten</p>
+    </div>
+  </div>
+
+  <!-- Firebase SDK (compat v10.12.0) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
+  <script src="shared.js"></script>
+  <script>
+    initApp(function(user) {
+      // Render navigation
+      renderNav('dashboard');
+
+      // Set greeting
+      var name = user.displayName || user.email || 'Benutzer';
+      var firstName = name.split(' ')[0];
+      document.getElementById('greeting').textContent = 'Hallo, ' + firstName + '!';
+
+      // Set date
+      var now = new Date();
+      var days = ['Sonntag','Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag'];
+      var months = ['Januar','Februar','Maerz','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+      document.getElementById('greetingDate').textContent =
+        days[now.getDay()] + ', ' + now.getDate() + '. ' + months[now.getMonth()] + ' ' + now.getFullYear();
+
+      // Logout
+      document.getElementById('btnLogout').addEventListener('click', function() {
+        signOut();
+      });
+
+      // Sync data, then refresh widgets
+      if (isOnline) {
+        Promise.all([
+          syncWithFirebase('projects'),
+          syncWithFirebase('reports'),
+          syncWithFirebase('drives'),
+          syncWithFirebase('costs')
+        ]).then(refreshWidgets);
+      } else {
+        refreshWidgets();
+      }
+    });
+
+    function refreshWidgets() {
+      renderTodayWidget();
+      renderProjectsWidget();
+      renderReportsWidget();
+      renderDrivesWidget();
+      renderCostsWidget();
+    }
+
+    function renderTodayWidget() {
+      var container = document.getElementById('widgetToday');
+      var today = new Date().toISOString().split('T')[0];
+
+      var projects = getActiveItems('projects').filter(function(p) {
+        return p.date === today || p.executionDate === today;
+      });
+      var reports = getActiveItems('reports').filter(function(r) {
+        return r.date === today;
+      });
+
+      var items = [];
+      projects.forEach(function(p) {
+        items.push({ label: p.name || p.projectName || 'Projekt', type: 'Projekt', href: 'projects.html?id=' + p.id });
+      });
+      reports.forEach(function(r) {
+        items.push({ label: 'EB: ' + (r.projectName || 'Bericht'), type: 'Bericht', href: 'reports.html?id=' + r.id });
+      });
+
+      if (items.length === 0) {
+        container.innerHTML = '<p class="list-empty">Keine Termine heute</p>';
+        return;
+      }
+
+      container.innerHTML = items.map(function(item) {
+        return '<a href="' + item.href + '" class="card-clickable" style="display:block;padding:8px 0;border-bottom:1px solid var(--color-border);">' +
+               '<strong>' + escapeHtml(item.label) + '</strong> <span class="text-secondary">(' + item.type + ')</span></a>';
+      }).join('');
+    }
+
+    function renderProjectsWidget() {
+      var container = document.getElementById('widgetProjects');
+      var projects = getActiveItems('projects')
+        .filter(function(p) { return p.status !== 'abgeschlossen'; })
+        .slice(0, 5);
+
+      if (projects.length === 0) {
+        container.innerHTML = '<p class="list-empty">Keine aktiven Projekte</p>';
+        return;
+      }
+
+      container.innerHTML = projects.map(function(p) {
+        var name = p.name || p.projectName || 'Ohne Bezeichnung';
+        var client = p.client || p.auftraggeber || '';
+        return '<a href="projects.html?id=' + p.id + '" class="card-clickable" style="display:block;padding:8px 0;border-bottom:1px solid var(--color-border);">' +
+               '<strong>' + escapeHtml(name) + '</strong>' +
+               (client ? '<br><span class="text-secondary">' + escapeHtml(client) + '</span>' : '') +
+               '</a>';
+      }).join('');
+    }
+
+    function renderReportsWidget() {
+      var container = document.getElementById('widgetReports');
+      var reports = getActiveItems('reports')
+        .filter(function(r) { return r.status === 'entwurf'; })
+        .slice(0, 5);
+
+      if (reports.length === 0) {
+        container.innerHTML = '<p class="list-empty">Keine offenen Berichte</p>';
+        return;
+      }
+
+      container.innerHTML = reports.map(function(r) {
+        var label = r.projectName || 'Einsatzbericht';
+        var date = r.date ? formatDate(r.date) : '';
+        return '<a href="reports.html?id=' + r.id + '" class="card-clickable" style="display:block;padding:8px 0;border-bottom:1px solid var(--color-border);">' +
+               '<strong>' + escapeHtml(label) + '</strong>' +
+               (date ? ' <span class="text-secondary">' + date + '</span>' : '') +
+               ' <span class="badge badge-entwurf">Entwurf</span></a>';
+      }).join('');
+    }
+
+    function renderDrivesWidget() {
+      var container = document.getElementById('widgetDrives');
+      var drives = getActiveItems('drives').slice(0, 5);
+
+      if (drives.length === 0) {
+        container.innerHTML = '<p class="list-empty">Keine Fahrten</p>';
+        return;
+      }
+
+      container.innerHTML = drives.map(function(d) {
+        var route = (d.startLocation || '?') + ' → ' + (d.endLocation || '?');
+        var date = d.date ? formatDate(d.date) : '';
+        var km = d.kmDriven || '';
+        return '<a href="drives.html?id=' + d.id + '" class="card-clickable" style="display:block;padding:8px 0;border-bottom:1px solid var(--color-border);">' +
+               '<strong>' + escapeHtml(route) + '</strong>' +
+               (km ? ' <span class="text-secondary">' + km + ' km</span>' : '') +
+               (date ? '<br><span class="text-secondary">' + date + '</span>' : '') +
+               '</a>';
+      }).join('');
+    }
+
+    function renderCostsWidget() {
+      var container = document.getElementById('widgetCosts');
+      var costs = getActiveItems('costs')
+        .filter(function(c) { return c.status !== 'bezahlt'; });
+
+      var total = costs.reduce(function(sum, c) { return sum + (parseFloat(c.amount) || 0); }, 0);
+      var display = costs.slice(0, 5);
+
+      if (display.length === 0) {
+        container.innerHTML = '<p class="list-empty">Keine offenen Kosten</p>';
+        return;
+      }
+
+      var html = '<div style="font-weight:600;margin-bottom:8px;">Gesamt: ' + total.toFixed(2).replace('.', ',') + ' &euro;</div>';
+      html += display.map(function(c) {
+        var label = c.category || 'Kosten';
+        var amount = parseFloat(c.amount) || 0;
+        var date = c.date ? formatDate(c.date) : '';
+        return '<a href="costs.html?id=' + c.id + '" class="card-clickable" style="display:block;padding:8px 0;border-bottom:1px solid var(--color-border);">' +
+               '<strong>' + escapeHtml(label) + '</strong> ' + amount.toFixed(2).replace('.', ',') + ' &euro;' +
+               (date ? '<br><span class="text-secondary">' + date + '</span>' : '') +
+               '</a>';
+      }).join('');
+
+      container.innerHTML = html;
+    }
+
+    function escapeHtml(str) {
+      var div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+  </script>
+</body>
+</html>

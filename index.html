@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Flexfundament App – Login</title>
+  <link rel="stylesheet" href="shared.css">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#1565c0">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+</head>
+<body class="no-nav">
+
+  <div class="login-container" id="loginContainer">
+    <div class="login-logo">Flexfundament</div>
+    <div class="login-subtitle">Baustellen-Dokumentation &amp; Projektsteuerung</div>
+
+    <button class="btn btn-google" id="btnGoogleLogin" style="display:none;">
+      <svg width="20" height="20" viewBox="0 0 48 48" style="margin-right:8px;">
+        <path fill="#4285F4" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+        <path fill="#34A853" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+        <path fill="#FBBC05" d="M10.53 28.59a14.5 14.5 0 0 1 0-9.18l-7.98-6.19a24.01 24.01 0 0 0 0 21.56l7.98-6.19z"/>
+        <path fill="#EA4335" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+      </svg>
+      Mit Google anmelden
+    </button>
+
+    <div id="loginSpinner" class="mt-md">
+      <div class="spinner"></div>
+      <p class="text-secondary mt-sm">Anmeldung wird geprueft...</p>
+    </div>
+  </div>
+
+  <!-- Firebase SDK (compat v10.12.0) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
+  <script src="shared.js"></script>
+  <script>
+    initApp(function(user) {
+      // If user is null, we're on the login page and not logged in
+      if (!user) {
+        document.getElementById('loginSpinner').style.display = 'none';
+        document.getElementById('btnGoogleLogin').style.display = 'inline-flex';
+      }
+      // If user exists, initApp already redirects to dashboard
+    });
+
+    document.getElementById('btnGoogleLogin').addEventListener('click', function() {
+      this.disabled = true;
+      document.getElementById('loginSpinner').style.display = '';
+      this.style.display = 'none';
+      signInWithGoogle();
+    });
+  </script>
+</body>
+</html>
