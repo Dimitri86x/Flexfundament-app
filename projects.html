@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Flexfundament App – Projekte</title>
+  <link rel="stylesheet" href="shared.css">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#1565c0">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <style>
+    .segmented { display: flex; gap: 0; border: 1px solid var(--color-border); border-radius: var(--radius); overflow: hidden; }
+    .segmented label { flex: 1; text-align: center; padding: 6px 4px; font-size: 0.75rem; cursor: pointer; background: var(--color-surface); transition: background var(--transition), color var(--transition); min-height: var(--touch-min); display: flex; align-items: center; justify-content: center; }
+    .segmented input { display: none; }
+    .segmented input:checked + span { background: var(--color-primary); color: #fff; }
+    .segmented label span { display: block; width: 100%; padding: 6px 2px; border-radius: 0; }
+    .toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; }
+    .toggle-switch { position: relative; width: 48px; height: 28px; flex-shrink: 0; }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider { position: absolute; inset: 0; background: var(--color-border); border-radius: 14px; cursor: pointer; transition: background var(--transition); }
+    .toggle-slider::before { content: ''; position: absolute; width: 22px; height: 22px; left: 3px; bottom: 3px; background: #fff; border-radius: 50%; transition: transform var(--transition); }
+    .toggle-switch input:checked + .toggle-slider { background: var(--color-primary); }
+    .toggle-switch input:checked + .toggle-slider::before { transform: translateX(20px); }
+    .photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 8px; margin-top: 8px; }
+    .photo-thumb { position: relative; aspect-ratio: 1; border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--color-border); }
+    .photo-thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .photo-remove { position: absolute; top: 2px; right: 2px; width: 22px; height: 22px; background: rgba(0,0,0,0.6); color: #fff; border: none; border-radius: 50%; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    .linked-section-list { font-size: 0.85rem; color: var(--color-text-secondary); }
+    .doc-status-row { margin-bottom: 12px; }
+    .doc-status-label { font-size: 0.85rem; margin-bottom: 4px; }
+  </style>
+</head>
+<body>
+
+  <!-- ========== LIST VIEW ========== -->
+  <div id="listView" class="page">
+    <div class="search-bar">
+      <input type="text" class="form-input" id="searchInput" placeholder="Projekt suchen...">
+    </div>
+    <div class="filter-bar">
+      <select class="form-select" id="filterStatus">
+        <option value="">Alle Status</option>
+        <option value="aktiv">Aktiv</option>
+        <option value="abgeschlossen">Abgeschlossen</option>
+      </select>
+      <select class="form-select" id="filterType">
+        <option value="">Alle Einsatzarten</option>
+        <option value="Montage">Montage</option>
+        <option value="Belastungsversuch">Belastungsversuch</option>
+        <option value="Baubesprechung">Baubesprechung</option>
+      </select>
+    </div>
+    <div id="projectList"></div>
+    <button class="fab" id="btnNew" title="Neues Projekt">+</button>
+  </div>
+
+  <!-- ========== FORM VIEW ========== -->
+  <div id="formView" class="page" style="display:none;">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">
+      <button class="btn-back" id="btnBack">&#8592; Zurueck</button>
+      <h2 style="font-size:1.1rem;font-weight:600;" id="formTitle">Neues Projekt</h2>
+    </div>
+
+    <form id="projectForm" novalidate>
+
+      <!-- Stammdaten -->
+      <div class="card">
+        <div class="card-title">Stammdaten</div>
+
+        <div class="form-group">
+          <label class="form-label">Projektbezeichnung <span class="required">*</span></label>
+          <input type="text" class="form-input" id="fName" required>
+          <div class="form-warning" id="wName">Bitte Projektbezeichnung eingeben</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Einsatzart <span class="required">*</span></label>
+          <select class="form-select" id="fType" required>
+            <option value="">Bitte waehlen</option>
+            <option value="Montage">Montage</option>
+            <option value="Belastungsversuch">Belastungsversuch</option>
+            <option value="Baubesprechung">Baubesprechung</option>
+          </select>
+          <div class="form-warning" id="wType">Bitte Einsatzart waehlen</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Auftraggeber <span class="required">*</span></label>
+          <input type="text" class="form-input" id="fClient" required>
+          <div class="form-warning" id="wClient">Bitte Auftraggeber eingeben</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Ansprechpartner <span class="required">*</span></label>
+          <input type="text" class="form-input" id="fContact" required>
+          <div class="form-warning" id="wContact">Bitte Ansprechpartner eingeben</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Telefon</label>
+          <input type="tel" class="form-input" id="fPhone">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">BV / Baustellenadresse <span class="required">*</span></label>
+          <textarea class="form-textarea" id="fAddress" rows="2" required></textarea>
+          <div class="form-warning" id="wAddress">Bitte Adresse eingeben</div>
+        </div>
+
+        <div class="toggle-row">
+          <span style="font-size:0.85rem;">Einbaubedingungen unterschrieben</span>
+          <label class="toggle-switch">
+            <input type="checkbox" id="fConditionsSigned">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Status <span class="required">*</span></label>
+          <select class="form-select" id="fStatus">
+            <option value="aktiv">Aktiv</option>
+            <option value="abgeschlossen">Abgeschlossen</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Unterlagenstatus -->
+      <div class="collapsible" id="colDocs">
+        <div class="collapsible-header">
+          Unterlagenstatus <span class="collapsible-arrow">&#9660;</span>
+        </div>
+        <div class="collapsible-body" id="docsBody"></div>
+      </div>
+
+      <!-- Termin -->
+      <div class="card">
+        <div class="card-title">Termin</div>
+        <div class="form-group">
+          <label class="form-label">Ausfuehrungstermin <span class="required">*</span></label>
+          <input type="date" class="form-input" id="fDate" required>
+          <div class="form-warning" id="wDate">Bitte Termin eingeben</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Uhrzeit</label>
+          <input type="time" class="form-input" id="fTime">
+        </div>
+      </div>
+
+      <!-- Vorbereitung -->
+      <div class="collapsible" id="colPrep">
+        <div class="collapsible-header">
+          Vorbereitung <span class="collapsible-arrow">&#9660;</span>
+        </div>
+        <div class="collapsible-body">
+          <div class="toggle-row">
+            <span style="font-size:0.85rem;">Grobabsteckung</span>
+            <label class="toggle-switch">
+              <input type="checkbox" id="fRoughStaking">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div class="toggle-row">
+            <span style="font-size:0.85rem;">Hoehenbezugspunkt</span>
+            <label class="toggle-switch">
+              <input type="checkbox" id="fHeightRef">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div class="form-group mt-md">
+            <label class="form-label">Zugaenglichkeit Beschreibung</label>
+            <textarea class="form-textarea" id="fAccessDesc" rows="2"></textarea>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Zugaenglichkeit Fotos</label>
+            <input type="file" class="form-input" id="fAccessPhotos" accept="image/*" capture="environment" multiple>
+            <div class="photo-grid" id="accessPhotoGrid"></div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Geplanter Materialeinsatz</label>
+            <textarea class="form-textarea" id="fMaterial" rows="2"></textarea>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Geplanter Maschineneinsatz</label>
+            <textarea class="form-textarea" id="fMachinery" rows="2"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- Verknuepfte Datensaetze -->
+      <div class="collapsible" id="colLinked">
+        <div class="collapsible-header">
+          Verknuepfte Datensaetze <span class="collapsible-arrow">&#9660;</span>
+        </div>
+        <div class="collapsible-body">
+          <div class="section-title" style="margin-top:0;">Einsatzberichte</div>
+          <div id="linkedReports" class="linked-section-list">Noch keine Einsatzberichte</div>
+          <div class="section-title">Dokumente</div>
+          <div id="linkedDocuments" class="linked-section-list">Noch keine Dokumente</div>
+          <div class="section-title">Fahrten</div>
+          <div id="linkedDrives" class="linked-section-list">Noch keine Fahrten</div>
+          <div class="section-title">Kosten</div>
+          <div id="linkedCosts" class="linked-section-list">Noch keine Kosten</div>
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <button type="submit" class="btn btn-primary btn-block">Speichern</button>
+      <button type="button" class="btn btn-danger btn-block mt-sm" id="btnDelete" style="display:none;">Loeschen</button>
+    </form>
+  </div>
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
+  <script src="shared.js"></script>
+  <script>
+    // --- State ---
+    var currentId = null;
+    var accessPhotos = []; // Array of { dataUrl, name }
+
+    // Document types for Unterlagenstatus
+    var DOC_TYPES = [
+      'Belastungsversuch PDF',
+      'Bodengutachten',
+      'Lageplan',
+      'Statik / Lastangaben',
+      'Fundamentplan',
+      'Bauplaene'
+    ];
+
+    // --- Init ---
+    initApp(function(user) {
+      renderNav('projects');
+      buildDocsSection();
+      initCollapsibles();
+
+      // Check URL params
+      var editId = getUrlParam('id');
+      var isNew = getUrlParam('new');
+
+      if (editId) {
+        openForm(editId);
+      } else if (isNew) {
+        openForm(null);
+      } else {
+        showList();
+      }
+
+      // Sync then render
+      if (isOnline) {
+        syncWithFirebase('projects').then(function() { if (!currentId && !isNew) renderList(); });
+      }
+    });
+
+    // --- List View ---
+    function showList() {
+      document.getElementById('listView').style.display = '';
+      document.getElementById('formView').style.display = 'none';
+      currentId = null;
+      // Update URL without reload
+      history.replaceState(null, '', 'projects.html');
+      renderList();
+    }
+
+    function renderList() {
+      var projects = getActiveItems('projects');
+      var search = document.getElementById('searchInput').value.toLowerCase().trim();
+      var statusFilter = document.getElementById('filterStatus').value;
+      var typeFilter = document.getElementById('filterType').value;
+
+      // Filter
+      var filtered = projects.filter(function(p) {
+        if (search && (p.name || '').toLowerCase().indexOf(search) === -1) return false;
+        if (statusFilter && (p.status || 'aktiv') !== statusFilter) return false;
+        if (typeFilter && p.type !== typeFilter) return false;
+        return true;
+      });
+
+      // Sort by execution date (newest first)
+      filtered.sort(function(a, b) {
+        var da = a.executionDate || '';
+        var db = b.executionDate || '';
+        return db.localeCompare(da);
+      });
+
+      var container = document.getElementById('projectList');
+      if (filtered.length === 0) {
+        container.innerHTML = '<p class="list-empty">Keine Projekte gefunden</p>';
+        return;
+      }
+
+      container.innerHTML = filtered.map(function(p) {
+        var status = p.status || 'aktiv';
+        var badgeClass = status === 'abgeschlossen' ? 'badge-abgeschlossen' : 'badge-aktiv';
+        return '<div class="card card-clickable" data-id="' + p.id + '">' +
+          '<div style="display:flex;justify-content:space-between;align-items:flex-start;">' +
+            '<div>' +
+              '<div class="card-title">' + escapeHtml(p.name || 'Ohne Bezeichnung') + '</div>' +
+              '<div class="card-subtitle">' + escapeHtml(p.client || '') +
+                (p.type ? ' · ' + escapeHtml(p.type) : '') + '</div>' +
+              (p.executionDate ? '<div class="card-subtitle" style="margin-top:4px;">' + formatDate(p.executionDate) +
+                (p.executionTime ? ' ' + formatTime(p.executionTime) : '') + '</div>' : '') +
+            '</div>' +
+            '<span class="badge ' + badgeClass + '">' + escapeHtml(status) + '</span>' +
+          '</div>' +
+        '</div>';
+      }).join('');
+
+      // Click handlers via delegation
+      container.querySelectorAll('[data-id]').forEach(function(card) {
+        card.addEventListener('click', function() {
+          openForm(card.getAttribute('data-id'));
+        });
+      });
+    }
+
+    // Filters
+    document.getElementById('searchInput').addEventListener('input', renderList);
+    document.getElementById('filterStatus').addEventListener('change', renderList);
+    document.getElementById('filterType').addEventListener('change', renderList);
+
+    // New project button
+    document.getElementById('btnNew').addEventListener('click', function() {
+      openForm(null);
+    });
+
+    // --- Form View ---
+    function openForm(id) {
+      document.getElementById('listView').style.display = 'none';
+      document.getElementById('formView').style.display = '';
+      accessPhotos = [];
+
+      if (id) {
+        currentId = id;
+        var p = getItemById('projects', id);
+        if (!p) {
+          showToast('Projekt nicht gefunden', 'error');
+          showList();
+          return;
+        }
+        document.getElementById('formTitle').textContent = 'Projekt bearbeiten';
+        history.replaceState(null, '', 'projects.html?id=' + id);
+        fillForm(p);
+        document.getElementById('btnDelete').style.display = '';
+      } else {
+        currentId = null;
+        document.getElementById('formTitle').textContent = 'Neues Projekt';
+        history.replaceState(null, '', 'projects.html?new=1');
+        resetForm();
+        document.getElementById('btnDelete').style.display = 'none';
+      }
+      // Scroll to top
+      window.scrollTo(0, 0);
+    }
+
+    function fillForm(p) {
+      document.getElementById('fName').value = p.name || '';
+      document.getElementById('fType').value = p.type || '';
+      document.getElementById('fClient').value = p.client || '';
+      document.getElementById('fContact').value = p.contact || '';
+      document.getElementById('fPhone').value = p.phone || '';
+      document.getElementById('fAddress').value = p.address || '';
+      document.getElementById('fConditionsSigned').checked = !!p.conditionsSigned;
+      document.getElementById('fStatus').value = p.status || 'aktiv';
+      document.getElementById('fDate').value = p.executionDate || '';
+      document.getElementById('fTime').value = p.executionTime || '';
+      document.getElementById('fRoughStaking').checked = !!p.roughStaking;
+      document.getElementById('fHeightRef').checked = !!p.heightRef;
+      document.getElementById('fAccessDesc').value = p.accessDescription || '';
+      document.getElementById('fMaterial').value = p.material || '';
+      document.getElementById('fMachinery').value = p.machinery || '';
+
+      // Document statuses
+      DOC_TYPES.forEach(function(docType, i) {
+        var val = (p.docStatuses && p.docStatuses[i]) || '';
+        var radios = document.querySelectorAll('input[name="doc_' + i + '"]');
+        radios.forEach(function(r) { r.checked = r.value === val; });
+      });
+
+      // Photos
+      accessPhotos = p.accessPhotos || [];
+      renderPhotoGrid();
+
+      // Linked records
+      renderLinkedRecords(p.id);
+    }
+
+    function resetForm() {
+      document.getElementById('projectForm').reset();
+      accessPhotos = [];
+      renderPhotoGrid();
+      // Reset doc statuses
+      DOC_TYPES.forEach(function(_, i) {
+        var radios = document.querySelectorAll('input[name="doc_' + i + '"]');
+        radios.forEach(function(r) { r.checked = false; });
+      });
+      // Reset linked
+      document.getElementById('linkedReports').textContent = 'Noch keine Einsatzberichte';
+      document.getElementById('linkedDocuments').textContent = 'Noch keine Dokumente';
+      document.getElementById('linkedDrives').textContent = 'Noch keine Fahrten';
+      document.getElementById('linkedCosts').textContent = 'Noch keine Kosten';
+    }
+
+    // Build Unterlagenstatus section
+    function buildDocsSection() {
+      var body = document.getElementById('docsBody');
+      var opts = ['Vorhanden', 'Fehlt', 'Nicht erforderlich'];
+      body.innerHTML = DOC_TYPES.map(function(docType, i) {
+        return '<div class="doc-status-row">' +
+          '<div class="doc-status-label">' + escapeHtml(docType) + '</div>' +
+          '<div class="segmented">' +
+            opts.map(function(opt) {
+              var val = opt.toLowerCase().replace(/ /g, '_');
+              return '<label><input type="radio" name="doc_' + i + '" value="' + val + '"><span>' + opt + '</span></label>';
+            }).join('') +
+          '</div>' +
+        '</div>';
+      }).join('');
+    }
+
+    // Photo handling
+    document.getElementById('fAccessPhotos').addEventListener('change', function(e) {
+      var files = Array.from(e.target.files);
+      files.forEach(function(file) {
+        compressImage(file, 1920, 5).then(function(blob) {
+          var reader = new FileReader();
+          reader.onload = function() {
+            accessPhotos.push({ dataUrl: reader.result, name: file.name });
+            renderPhotoGrid();
+          };
+          reader.readAsDataURL(blob);
+        });
+      });
+      e.target.value = '';
+    });
+
+    function renderPhotoGrid() {
+      var grid = document.getElementById('accessPhotoGrid');
+      if (accessPhotos.length === 0) {
+        grid.innerHTML = '';
+        return;
+      }
+      grid.innerHTML = accessPhotos.map(function(photo, i) {
+        return '<div class="photo-thumb">' +
+          '<img src="' + photo.dataUrl + '" alt="Foto">' +
+          '<button type="button" class="photo-remove" data-index="' + i + '">&times;</button>' +
+        '</div>';
+      }).join('');
+
+      grid.querySelectorAll('.photo-remove').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          accessPhotos.splice(parseInt(btn.getAttribute('data-index')), 1);
+          renderPhotoGrid();
+        });
+      });
+    }
+
+    // Linked records (placeholder, will be dynamic later)
+    function renderLinkedRecords(projectId) {
+      // Reports
+      var reports = getActiveItems('reports').filter(function(r) { return r.projectId === projectId; });
+      var el = document.getElementById('linkedReports');
+      el.textContent = reports.length === 0 ? 'Noch keine Einsatzberichte' :
+        reports.length + ' Einsatzbericht' + (reports.length > 1 ? 'e' : '');
+
+      // Documents
+      var docs = getActiveItems('documents').filter(function(d) { return d.projectId === projectId; });
+      var el2 = document.getElementById('linkedDocuments');
+      el2.textContent = docs.length === 0 ? 'Noch keine Dokumente' :
+        docs.length + ' Dokument' + (docs.length > 1 ? 'e' : '');
+
+      // Drives
+      var drives = getActiveItems('drives').filter(function(d) { return d.projectId === projectId; });
+      var el3 = document.getElementById('linkedDrives');
+      el3.textContent = drives.length === 0 ? 'Noch keine Fahrten' :
+        drives.length + ' Fahrt' + (drives.length > 1 ? 'en' : '');
+
+      // Costs
+      var costs = getActiveItems('costs').filter(function(c) { return c.projectId === projectId; });
+      var el4 = document.getElementById('linkedCosts');
+      el4.textContent = costs.length === 0 ? 'Noch keine Kosten' :
+        costs.length + ' Kosten' + 'eintrag' + (costs.length > 1 ? '' : '');
+    }
+
+    // --- Save ---
+    document.getElementById('projectForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+
+      // Collect data
+      var data = {
+        name: document.getElementById('fName').value.trim(),
+        type: document.getElementById('fType').value,
+        client: document.getElementById('fClient').value.trim(),
+        contact: document.getElementById('fContact').value.trim(),
+        phone: document.getElementById('fPhone').value.trim(),
+        address: document.getElementById('fAddress').value.trim(),
+        conditionsSigned: document.getElementById('fConditionsSigned').checked,
+        status: document.getElementById('fStatus').value,
+        executionDate: document.getElementById('fDate').value,
+        executionTime: document.getElementById('fTime').value,
+        roughStaking: document.getElementById('fRoughStaking').checked,
+        heightRef: document.getElementById('fHeightRef').checked,
+        accessDescription: document.getElementById('fAccessDesc').value.trim(),
+        material: document.getElementById('fMaterial').value.trim(),
+        machinery: document.getElementById('fMachinery').value.trim(),
+        accessPhotos: accessPhotos,
+        docStatuses: []
+      };
+
+      // Document statuses
+      DOC_TYPES.forEach(function(_, i) {
+        var checked = document.querySelector('input[name="doc_' + i + '"]:checked');
+        data.docStatuses.push(checked ? checked.value : '');
+      });
+
+      // Validate (warnings only)
+      var hasWarning = false;
+      var checks = [
+        { field: 'fName', warn: 'wName', val: data.name },
+        { field: 'fType', warn: 'wType', val: data.type },
+        { field: 'fClient', warn: 'wClient', val: data.client },
+        { field: 'fContact', warn: 'wContact', val: data.contact },
+        { field: 'fAddress', warn: 'wAddress', val: data.address },
+        { field: 'fDate', warn: 'wDate', val: data.executionDate }
+      ];
+
+      checks.forEach(function(c) {
+        var empty = !c.val;
+        document.getElementById(c.warn).classList.toggle('visible', empty);
+        if (empty) hasWarning = true;
+      });
+
+      // Save anyway (drafts allowed)
+      var id = currentId || generateId();
+      saveToLocal('projects', id, data);
+
+      if (hasWarning) {
+        showToast('Gespeichert (mit fehlenden Pflichtfeldern)', 'warning');
+      } else {
+        showToast('Projekt gespeichert', 'success');
+      }
+
+      currentId = id;
+      history.replaceState(null, '', 'projects.html?id=' + id);
+      document.getElementById('formTitle').textContent = 'Projekt bearbeiten';
+      document.getElementById('btnDelete').style.display = '';
+    });
+
+    // --- Delete ---
+    document.getElementById('btnDelete').addEventListener('click', function() {
+      if (currentId) {
+        var p = getItemById('projects', currentId);
+        var label = p ? p.name : '';
+        if (softDelete('projects', currentId, label)) {
+          showToast('Projekt geloescht', 'success');
+          showList();
+        }
+      }
+    });
+
+    // --- Back ---
+    document.getElementById('btnBack').addEventListener('click', function() {
+      showList();
+    });
+
+    // --- Phone click-to-call ---
+    document.getElementById('fPhone').addEventListener('focus', function() {
+      // Ensure tel: links work
+    });
+
+    // --- Utilities ---
+    function escapeHtml(str) {
+      var div = document.createElement('div');
+      div.textContent = str || '';
+      return div.innerHTML;
+    }
+  </script>
+</body>
+</html>
