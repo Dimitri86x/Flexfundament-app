@@ -23,8 +23,11 @@ const storage = firebase.storage();
 
 /** Google Sign-In via redirect (PWA/iOS safe) */
 function signInWithGoogle() {
-  const provider = new firebase.auth.GoogleAuthProvider();
-  return auth.signInWithRedirect(provider);
+  var provider = new firebase.auth.GoogleAuthProvider();
+  return auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).then(function() {
+    console.log('Persistence set to LOCAL, starting redirect');
+    return auth.signInWithRedirect(provider);
+  });
 }
 
 /** Sign out */

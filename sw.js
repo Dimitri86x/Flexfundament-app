@@ -2,17 +2,11 @@
    Flexfundament App – Service Worker
    ============================================ */
 
-var CACHE_NAME = 'ff-app-v1';
+var CACHE_NAME = 'ff-app-v2';
 var APP_SHELL = [
   './',
   './index.html',
   './dashboard.html',
-  './projects.html',
-  './reports.html',
-  './documents.html',
-  './drives.html',
-  './costs.html',
-  './calendar.html',
   './shared.js',
   './shared.css',
   './manifest.json'
@@ -50,19 +44,15 @@ self.addEventListener('activate', function(event) {
 self.addEventListener('fetch', function(event) {
   var url = new URL(event.request.url);
 
-  // Network-first for Firebase API calls (do NOT cache)
+  // ALWAYS network-only for Google/Firebase (auth redirects, API calls)
   if (url.hostname.includes('firebaseio.com') ||
       url.hostname.includes('googleapis.com') ||
       url.hostname.includes('firebaseapp.com') ||
-      url.hostname.includes('firebase.google.com')) {
-    event.respondWith(
-      fetch(event.request).catch(function() {
-        // Offline: return nothing for API calls
-        return new Response('{"error":"offline"}', {
-          headers: { 'Content-Type': 'application/json' }
-        });
-      })
-    );
+      url.hostname.includes('firebase.google.com') ||
+      url.hostname.includes('google.com') ||
+      url.hostname.includes('gstatic.com') ||
+      url.hostname.includes('accounts.google')) {
+    event.respondWith(fetch(event.request));
     return;
   }
 
