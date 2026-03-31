@@ -11,24 +11,31 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <style>
     .segmented { display: flex; gap: 0; border: 1px solid var(--color-border); border-radius: var(--radius); overflow: hidden; }
-    .segmented label { flex: 1; text-align: center; padding: 6px 4px; font-size: 0.75rem; cursor: pointer; background: var(--color-surface); transition: background var(--transition), color var(--transition); min-height: var(--touch-min); display: flex; align-items: center; justify-content: center; }
+    .segmented label { flex: 1; text-align: center; cursor: pointer; background: var(--color-surface); }
     .segmented input { display: none; }
+    .segmented label span { display: flex; align-items: center; justify-content: center; padding: 8px 2px; font-size: 0.75rem; min-height: var(--touch-min); transition: background var(--transition), color var(--transition); }
     .segmented input:checked + span { background: var(--color-primary); color: #fff; }
-    .segmented label span { display: block; width: 100%; padding: 6px 2px; border-radius: 0; }
     .toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; }
+    .toggle-label { font-size: 0.85rem; flex: 1; padding-right: 8px; }
     .toggle-switch { position: relative; width: 48px; height: 28px; flex-shrink: 0; }
     .toggle-switch input { opacity: 0; width: 0; height: 0; }
     .toggle-slider { position: absolute; inset: 0; background: var(--color-border); border-radius: 14px; cursor: pointer; transition: background var(--transition); }
     .toggle-slider::before { content: ''; position: absolute; width: 22px; height: 22px; left: 3px; bottom: 3px; background: #fff; border-radius: 50%; transition: transform var(--transition); }
     .toggle-switch input:checked + .toggle-slider { background: var(--color-primary); }
     .toggle-switch input:checked + .toggle-slider::before { transform: translateX(20px); }
-    .photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 8px; margin-top: 8px; }
+    .photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 8px; margin-top: 8px; }
     .photo-thumb { position: relative; aspect-ratio: 1; border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--color-border); }
     .photo-thumb img { width: 100%; height: 100%; object-fit: cover; }
-    .photo-remove { position: absolute; top: 2px; right: 2px; width: 22px; height: 22px; background: rgba(0,0,0,0.6); color: #fff; border: none; border-radius: 50%; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    .photo-thumb-pdf { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; background: #f5f5f5; font-size: 0.65rem; text-align: center; padding: 4px; word-break: break-all; color: var(--color-text-secondary); }
+    .photo-remove { position: absolute; top: 2px; right: 2px; width: 24px; height: 24px; background: rgba(0,0,0,0.6); color: #fff; border: none; border-radius: 50%; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    .upload-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+    .upload-buttons .btn { font-size: 0.8rem; padding: 8px 12px; }
+    .upload-buttons input[type="file"] { display: none; }
     .linked-section-list { font-size: 0.85rem; color: var(--color-text-secondary); }
     .doc-status-row { margin-bottom: 12px; }
     .doc-status-label { font-size: 0.85rem; margin-bottom: 4px; }
+    .coord-row { display: flex; gap: 8px; }
+    .coord-row .form-group { flex: 1; }
   </style>
 </head>
 <body>
@@ -58,7 +65,7 @@
   <!-- ========== FORM VIEW ========== -->
   <div id="formView" class="page" style="display:none;">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">
-      <button class="btn-back" id="btnBack">&#8592; Zurueck</button>
+      <button class="btn-back" id="btnBack" type="button">&#8592; Zurueck</button>
       <h2 style="font-size:1.1rem;font-weight:600;" id="formTitle">Neues Projekt</h2>
     </div>
 
@@ -99,38 +106,43 @@
 
         <div class="form-group">
           <label class="form-label">Telefon</label>
+          <a id="phoneLink" href="#" style="display:none;font-size:0.85rem;margin-bottom:4px;"></a>
           <input type="tel" class="form-input" id="fPhone">
-        </div>
-
-        <div class="form-group">
-          <label class="form-label">BV / Baustellenadresse <span class="required">*</span></label>
-          <textarea class="form-textarea" id="fAddress" rows="2" required></textarea>
-          <div class="form-warning" id="wAddress">Bitte Adresse eingeben</div>
-        </div>
-
-        <div class="toggle-row">
-          <span style="font-size:0.85rem;">Einbaubedingungen unterschrieben</span>
-          <label class="toggle-switch">
-            <input type="checkbox" id="fConditionsSigned">
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
-
-        <div class="form-group">
-          <label class="form-label">Status <span class="required">*</span></label>
-          <select class="form-select" id="fStatus">
-            <option value="aktiv">Aktiv</option>
-            <option value="abgeschlossen">Abgeschlossen</option>
-          </select>
         </div>
       </div>
 
-      <!-- Unterlagenstatus -->
-      <div class="collapsible" id="colDocs">
-        <div class="collapsible-header">
-          Unterlagenstatus <span class="collapsible-arrow">&#9660;</span>
+      <!-- Baustellenadresse -->
+      <div class="card">
+        <div class="card-title">Baustellenadresse</div>
+
+        <div class="form-group">
+          <label class="form-label">Strasse und Hausnummer <span class="required">*</span></label>
+          <input type="text" class="form-input" id="fStreet" required>
+          <div class="form-warning" id="wStreet">Bitte Strasse eingeben</div>
         </div>
-        <div class="collapsible-body" id="docsBody"></div>
+
+        <div class="form-group">
+          <label class="form-label">PLZ <span class="required">*</span></label>
+          <input type="text" class="form-input" id="fZip" inputmode="numeric" required>
+          <div class="form-warning" id="wZip">Bitte PLZ eingeben</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Ort <span class="required">*</span></label>
+          <input type="text" class="form-input" id="fCity" required>
+          <div class="form-warning" id="wCity">Bitte Ort eingeben</div>
+        </div>
+
+        <div class="coord-row">
+          <div class="form-group">
+            <label class="form-label">Breitengrad</label>
+            <input type="text" class="form-input" id="fLat" inputmode="decimal" placeholder="z.B. 51.1657">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Laengengrad</label>
+            <input type="text" class="form-input" id="fLng" inputmode="decimal" placeholder="z.B. 10.4515">
+          </div>
+        </div>
       </div>
 
       <!-- Termin -->
@@ -147,6 +159,14 @@
         </div>
       </div>
 
+      <!-- Unterlagenstatus -->
+      <div class="collapsible" id="colDocs">
+        <div class="collapsible-header">
+          Unterlagenstatus <span class="collapsible-arrow">&#9660;</span>
+        </div>
+        <div class="collapsible-body" id="docsBody"></div>
+      </div>
+
       <!-- Vorbereitung -->
       <div class="collapsible" id="colPrep">
         <div class="collapsible-header">
@@ -154,28 +174,45 @@
         </div>
         <div class="collapsible-body">
           <div class="toggle-row">
-            <span style="font-size:0.85rem;">Grobabsteckung</span>
+            <span class="toggle-label">Grobabsteckung vorhanden</span>
             <label class="toggle-switch">
               <input type="checkbox" id="fRoughStaking">
               <span class="toggle-slider"></span>
             </label>
           </div>
           <div class="toggle-row">
-            <span style="font-size:0.85rem;">Hoehenbezugspunkt</span>
+            <span class="toggle-label">Hoehenbezugspunkt vorhanden</span>
             <label class="toggle-switch">
               <input type="checkbox" id="fHeightRef">
               <span class="toggle-slider"></span>
             </label>
           </div>
+          <div class="toggle-row">
+            <span class="toggle-label">Einbaubedingungen unterschrieben</span>
+            <label class="toggle-switch">
+              <input type="checkbox" id="fConditionsSigned">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+
           <div class="form-group mt-md">
             <label class="form-label">Zugaenglichkeit Beschreibung</label>
             <textarea class="form-textarea" id="fAccessDesc" rows="2"></textarea>
           </div>
+
           <div class="form-group">
-            <label class="form-label">Zugaenglichkeit Fotos</label>
-            <input type="file" class="form-input" id="fAccessPhotos" accept="image/*" capture="environment" multiple>
-            <div class="photo-grid" id="accessPhotoGrid"></div>
+            <label class="form-label">Zugaenglichkeit Fotos / Dokumente</label>
+            <div class="upload-buttons">
+              <button type="button" class="btn btn-secondary" id="btnCamera">&#128247; Kamera</button>
+              <button type="button" class="btn btn-secondary" id="btnGallery">&#128444; Galerie</button>
+              <button type="button" class="btn btn-secondary" id="btnFile">&#128196; Datei/PDF</button>
+              <input type="file" id="inputCamera" accept="image/*" capture="environment">
+              <input type="file" id="inputGallery" accept="image/*" multiple>
+              <input type="file" id="inputFile" accept="image/*,application/pdf,.pdf" multiple>
+            </div>
+            <div class="photo-grid" id="accessFileGrid"></div>
           </div>
+
           <div class="form-group">
             <label class="form-label">Geplanter Materialeinsatz</label>
             <textarea class="form-textarea" id="fMaterial" rows="2"></textarea>
@@ -217,27 +254,28 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
   <script src="shared.js"></script>
   <script>
-    // --- State ---
-    var currentId = null;
-    var accessPhotos = []; // Array of { dataUrl, name }
-
-    // Document types for Unterlagenstatus
+    // --- Constants ---
     var DOC_TYPES = [
-      'Belastungsversuch PDF',
       'Bodengutachten',
       'Lageplan',
       'Statik / Lastangaben',
       'Fundamentplan',
+      'Richtpreisangebot',
       'Bauplaene'
     ];
+
+    // --- State ---
+    var currentId = null;
+    var accessFiles = []; // { dataUrl, name, type }
 
     // --- Init ---
     initApp(function(user) {
       renderNav('projects');
       buildDocsSection();
       initCollapsibles();
+      setupPhoneLink();
+      setupUploadButtons();
 
-      // Check URL params
       var editId = getUrlParam('id');
       var isNew = getUrlParam('new');
 
@@ -249,18 +287,21 @@
         showList();
       }
 
-      // Sync then render
       if (isOnline) {
-        syncWithFirebase('projects').then(function() { if (!currentId && !isNew) renderList(); });
+        syncWithFirebase('projects').then(function() {
+          if (!currentId && !isNew) renderList();
+        });
       }
     });
 
-    // --- List View ---
+    // =============================================
+    //  LIST VIEW
+    // =============================================
+
     function showList() {
       document.getElementById('listView').style.display = '';
       document.getElementById('formView').style.display = 'none';
       currentId = null;
-      // Update URL without reload
       history.replaceState(null, '', 'projects.html');
       renderList();
     }
@@ -271,7 +312,6 @@
       var statusFilter = document.getElementById('filterStatus').value;
       var typeFilter = document.getElementById('filterType').value;
 
-      // Filter
       var filtered = projects.filter(function(p) {
         if (search && (p.name || '').toLowerCase().indexOf(search) === -1) return false;
         if (statusFilter && (p.status || 'aktiv') !== statusFilter) return false;
@@ -279,11 +319,9 @@
         return true;
       });
 
-      // Sort by execution date (newest first)
+      // Sort by executionDate descending
       filtered.sort(function(a, b) {
-        var da = a.executionDate || '';
-        var db = b.executionDate || '';
-        return db.localeCompare(da);
+        return (b.executionDate || '').localeCompare(a.executionDate || '');
       });
 
       var container = document.getElementById('projectList');
@@ -295,21 +333,23 @@
       container.innerHTML = filtered.map(function(p) {
         var status = p.status || 'aktiv';
         var badgeClass = status === 'abgeschlossen' ? 'badge-abgeschlossen' : 'badge-aktiv';
+        var addr = buildAddressLine(p);
         return '<div class="card card-clickable" data-id="' + p.id + '">' +
           '<div style="display:flex;justify-content:space-between;align-items:flex-start;">' +
-            '<div>' +
-              '<div class="card-title">' + escapeHtml(p.name || 'Ohne Bezeichnung') + '</div>' +
-              '<div class="card-subtitle">' + escapeHtml(p.client || '') +
-                (p.type ? ' · ' + escapeHtml(p.type) : '') + '</div>' +
-              (p.executionDate ? '<div class="card-subtitle" style="margin-top:4px;">' + formatDate(p.executionDate) +
+            '<div style="min-width:0;flex:1;">' +
+              '<div class="card-title">' + esc(p.name || 'Ohne Bezeichnung') + '</div>' +
+              '<div class="card-subtitle">' + esc(p.client || '') +
+                (p.type ? ' &middot; ' + esc(p.type) : '') + '</div>' +
+              (addr ? '<div class="card-subtitle">' + esc(addr) + '</div>' : '') +
+              (p.executionDate ? '<div class="card-subtitle" style="margin-top:2px;">' +
+                formatDate(p.executionDate) +
                 (p.executionTime ? ' ' + formatTime(p.executionTime) : '') + '</div>' : '') +
             '</div>' +
-            '<span class="badge ' + badgeClass + '">' + escapeHtml(status) + '</span>' +
+            '<span class="badge ' + badgeClass + '" style="margin-left:8px;flex-shrink:0;">' + esc(status) + '</span>' +
           '</div>' +
         '</div>';
       }).join('');
 
-      // Click handlers via delegation
       container.querySelectorAll('[data-id]').forEach(function(card) {
         card.addEventListener('click', function() {
           openForm(card.getAttribute('data-id'));
@@ -317,21 +357,28 @@
       });
     }
 
-    // Filters
+    function buildAddressLine(p) {
+      var parts = [p.street, p.zip, p.city].filter(Boolean);
+      if (parts.length === 0) return '';
+      if (p.zip && p.city) return (p.street ? p.street + ', ' : '') + p.zip + ' ' + p.city;
+      return parts.join(', ');
+    }
+
+    // Filter listeners
     document.getElementById('searchInput').addEventListener('input', renderList);
     document.getElementById('filterStatus').addEventListener('change', renderList);
     document.getElementById('filterType').addEventListener('change', renderList);
+    document.getElementById('btnNew').addEventListener('click', function() { openForm(null); });
 
-    // New project button
-    document.getElementById('btnNew').addEventListener('click', function() {
-      openForm(null);
-    });
+    // =============================================
+    //  FORM VIEW
+    // =============================================
 
-    // --- Form View ---
     function openForm(id) {
       document.getElementById('listView').style.display = 'none';
       document.getElementById('formView').style.display = '';
-      accessPhotos = [];
+      accessFiles = [];
+      clearWarnings();
 
       if (id) {
         currentId = id;
@@ -352,7 +399,6 @@
         resetForm();
         document.getElementById('btnDelete').style.display = 'none';
       }
-      // Scroll to top
       window.scrollTo(0, 0);
     }
 
@@ -362,27 +408,34 @@
       document.getElementById('fClient').value = p.client || '';
       document.getElementById('fContact').value = p.contact || '';
       document.getElementById('fPhone').value = p.phone || '';
-      document.getElementById('fAddress').value = p.address || '';
-      document.getElementById('fConditionsSigned').checked = !!p.conditionsSigned;
-      document.getElementById('fStatus').value = p.status || 'aktiv';
+      document.getElementById('fStreet').value = p.street || '';
+      document.getElementById('fZip').value = p.zip || '';
+      document.getElementById('fCity').value = p.city || '';
+      document.getElementById('fLat').value = p.lat || '';
+      document.getElementById('fLng').value = p.lng || '';
       document.getElementById('fDate').value = p.executionDate || '';
       document.getElementById('fTime').value = p.executionTime || '';
       document.getElementById('fRoughStaking').checked = !!p.roughStaking;
       document.getElementById('fHeightRef').checked = !!p.heightRef;
+      document.getElementById('fConditionsSigned').checked = !!p.conditionsSigned;
       document.getElementById('fAccessDesc').value = p.accessDescription || '';
       document.getElementById('fMaterial').value = p.material || '';
       document.getElementById('fMachinery').value = p.machinery || '';
 
       // Document statuses
-      DOC_TYPES.forEach(function(docType, i) {
+      DOC_TYPES.forEach(function(_, i) {
         var val = (p.docStatuses && p.docStatuses[i]) || '';
-        var radios = document.querySelectorAll('input[name="doc_' + i + '"]');
-        radios.forEach(function(r) { r.checked = r.value === val; });
+        document.querySelectorAll('input[name="doc_' + i + '"]').forEach(function(r) {
+          r.checked = r.value === val;
+        });
       });
 
-      // Photos
-      accessPhotos = p.accessPhotos || [];
-      renderPhotoGrid();
+      // Files/photos
+      accessFiles = p.accessFiles || [];
+      renderFileGrid();
+
+      // Phone link
+      updatePhoneLink();
 
       // Linked records
       renderLinkedRecords(p.id);
@@ -390,27 +443,36 @@
 
     function resetForm() {
       document.getElementById('projectForm').reset();
-      accessPhotos = [];
-      renderPhotoGrid();
-      // Reset doc statuses
+      accessFiles = [];
+      renderFileGrid();
       DOC_TYPES.forEach(function(_, i) {
-        var radios = document.querySelectorAll('input[name="doc_' + i + '"]');
-        radios.forEach(function(r) { r.checked = false; });
+        document.querySelectorAll('input[name="doc_' + i + '"]').forEach(function(r) {
+          r.checked = false;
+        });
       });
-      // Reset linked
       document.getElementById('linkedReports').textContent = 'Noch keine Einsatzberichte';
       document.getElementById('linkedDocuments').textContent = 'Noch keine Dokumente';
       document.getElementById('linkedDrives').textContent = 'Noch keine Fahrten';
       document.getElementById('linkedCosts').textContent = 'Noch keine Kosten';
+      updatePhoneLink();
     }
 
-    // Build Unterlagenstatus section
+    function clearWarnings() {
+      document.querySelectorAll('.form-warning').forEach(function(w) {
+        w.classList.remove('visible');
+      });
+    }
+
+    // =============================================
+    //  UNTERLAGENSTATUS
+    // =============================================
+
     function buildDocsSection() {
       var body = document.getElementById('docsBody');
       var opts = ['Vorhanden', 'Fehlt', 'Nicht erforderlich'];
       body.innerHTML = DOC_TYPES.map(function(docType, i) {
         return '<div class="doc-status-row">' +
-          '<div class="doc-status-label">' + escapeHtml(docType) + '</div>' +
+          '<div class="doc-status-label">' + esc(docType) + '</div>' +
           '<div class="segmented">' +
             opts.map(function(opt) {
               var val = opt.toLowerCase().replace(/ /g, '_');
@@ -421,94 +483,160 @@
       }).join('');
     }
 
-    // Photo handling
-    document.getElementById('fAccessPhotos').addEventListener('change', function(e) {
+    // =============================================
+    //  FILE UPLOAD (Camera / Gallery / PDF)
+    // =============================================
+
+    function setupUploadButtons() {
+      document.getElementById('btnCamera').addEventListener('click', function() {
+        document.getElementById('inputCamera').click();
+      });
+      document.getElementById('btnGallery').addEventListener('click', function() {
+        document.getElementById('inputGallery').click();
+      });
+      document.getElementById('btnFile').addEventListener('click', function() {
+        document.getElementById('inputFile').click();
+      });
+
+      document.getElementById('inputCamera').addEventListener('change', handleFileSelect);
+      document.getElementById('inputGallery').addEventListener('change', handleFileSelect);
+      document.getElementById('inputFile').addEventListener('change', handleFileSelect);
+    }
+
+    function handleFileSelect(e) {
       var files = Array.from(e.target.files);
+      var pending = files.length;
+      if (pending === 0) return;
+
       files.forEach(function(file) {
-        compressImage(file, 1920, 5).then(function(blob) {
+        var isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+
+        if (isPdf) {
+          // Store PDF as dataUrl
           var reader = new FileReader();
           reader.onload = function() {
-            accessPhotos.push({ dataUrl: reader.result, name: file.name });
-            renderPhotoGrid();
+            accessFiles.push({ dataUrl: reader.result, name: file.name, type: 'pdf' });
+            if (--pending === 0) renderFileGrid();
           };
-          reader.readAsDataURL(blob);
-        });
+          reader.readAsDataURL(file);
+        } else {
+          // Compress image then store
+          compressImage(file, 1920, 5).then(function(blob) {
+            var reader = new FileReader();
+            reader.onload = function() {
+              accessFiles.push({ dataUrl: reader.result, name: file.name, type: 'image' });
+              if (--pending === 0) renderFileGrid();
+            };
+            reader.readAsDataURL(blob);
+          });
+        }
       });
-      e.target.value = '';
-    });
 
-    function renderPhotoGrid() {
-      var grid = document.getElementById('accessPhotoGrid');
-      if (accessPhotos.length === 0) {
-        grid.innerHTML = '';
-        return;
-      }
-      grid.innerHTML = accessPhotos.map(function(photo, i) {
-        return '<div class="photo-thumb">' +
-          '<img src="' + photo.dataUrl + '" alt="Foto">' +
+      e.target.value = '';
+    }
+
+    function renderFileGrid() {
+      var grid = document.getElementById('accessFileGrid');
+      if (accessFiles.length === 0) { grid.innerHTML = ''; return; }
+
+      grid.innerHTML = accessFiles.map(function(f, i) {
+        var inner;
+        if (f.type === 'pdf') {
+          inner = '<div class="photo-thumb-pdf">&#128196;<br>' + esc(f.name) + '</div>';
+        } else {
+          inner = '<img src="' + f.dataUrl + '" alt="Foto">';
+        }
+        return '<div class="photo-thumb">' + inner +
           '<button type="button" class="photo-remove" data-index="' + i + '">&times;</button>' +
         '</div>';
       }).join('');
 
       grid.querySelectorAll('.photo-remove').forEach(function(btn) {
         btn.addEventListener('click', function() {
-          accessPhotos.splice(parseInt(btn.getAttribute('data-index')), 1);
-          renderPhotoGrid();
+          accessFiles.splice(parseInt(btn.getAttribute('data-index')), 1);
+          renderFileGrid();
         });
       });
     }
 
-    // Linked records (placeholder, will be dynamic later)
-    function renderLinkedRecords(projectId) {
-      // Reports
-      var reports = getActiveItems('reports').filter(function(r) { return r.projectId === projectId; });
-      var el = document.getElementById('linkedReports');
-      el.textContent = reports.length === 0 ? 'Noch keine Einsatzberichte' :
-        reports.length + ' Einsatzbericht' + (reports.length > 1 ? 'e' : '');
+    // =============================================
+    //  PHONE CLICK-TO-CALL
+    // =============================================
 
-      // Documents
-      var docs = getActiveItems('documents').filter(function(d) { return d.projectId === projectId; });
-      var el2 = document.getElementById('linkedDocuments');
-      el2.textContent = docs.length === 0 ? 'Noch keine Dokumente' :
-        docs.length + ' Dokument' + (docs.length > 1 ? 'e' : '');
-
-      // Drives
-      var drives = getActiveItems('drives').filter(function(d) { return d.projectId === projectId; });
-      var el3 = document.getElementById('linkedDrives');
-      el3.textContent = drives.length === 0 ? 'Noch keine Fahrten' :
-        drives.length + ' Fahrt' + (drives.length > 1 ? 'en' : '');
-
-      // Costs
-      var costs = getActiveItems('costs').filter(function(c) { return c.projectId === projectId; });
-      var el4 = document.getElementById('linkedCosts');
-      el4.textContent = costs.length === 0 ? 'Noch keine Kosten' :
-        costs.length + ' Kosten' + 'eintrag' + (costs.length > 1 ? '' : '');
+    function setupPhoneLink() {
+      document.getElementById('fPhone').addEventListener('input', updatePhoneLink);
     }
 
-    // --- Save ---
+    function updatePhoneLink() {
+      var val = document.getElementById('fPhone').value.trim();
+      var link = document.getElementById('phoneLink');
+      if (val) {
+        link.href = 'tel:' + val.replace(/\s/g, '');
+        link.textContent = val + ' anrufen';
+        link.style.display = 'inline-block';
+      } else {
+        link.style.display = 'none';
+      }
+    }
+
+    // =============================================
+    //  LINKED RECORDS
+    // =============================================
+
+    function renderLinkedRecords(projectId) {
+      var reports = getActiveItems('reports').filter(function(r) { return r.projectId === projectId; });
+      document.getElementById('linkedReports').textContent =
+        reports.length === 0 ? 'Noch keine Einsatzberichte' : reports.length + ' Einsatzbericht' + (reports.length > 1 ? 'e' : '');
+
+      var docs = getActiveItems('documents').filter(function(d) { return d.projectId === projectId; });
+      document.getElementById('linkedDocuments').textContent =
+        docs.length === 0 ? 'Noch keine Dokumente' : docs.length + ' Dokument' + (docs.length > 1 ? 'e' : '');
+
+      var drives = getActiveItems('drives').filter(function(d) { return d.projectId === projectId; });
+      document.getElementById('linkedDrives').textContent =
+        drives.length === 0 ? 'Noch keine Fahrten' : drives.length + ' Fahrt' + (drives.length > 1 ? 'en' : '');
+
+      var costs = getActiveItems('costs').filter(function(c) { return c.projectId === projectId; });
+      document.getElementById('linkedCosts').textContent =
+        costs.length === 0 ? 'Noch keine Kosten' : costs.length + ' Kosteneintrag' + (costs.length > 1 ? 'e' : '');
+    }
+
+    // =============================================
+    //  SAVE
+    // =============================================
+
     document.getElementById('projectForm').addEventListener('submit', function(e) {
       e.preventDefault();
 
-      // Collect data
       var data = {
         name: document.getElementById('fName').value.trim(),
         type: document.getElementById('fType').value,
         client: document.getElementById('fClient').value.trim(),
         contact: document.getElementById('fContact').value.trim(),
         phone: document.getElementById('fPhone').value.trim(),
-        address: document.getElementById('fAddress').value.trim(),
-        conditionsSigned: document.getElementById('fConditionsSigned').checked,
-        status: document.getElementById('fStatus').value,
+        street: document.getElementById('fStreet').value.trim(),
+        zip: document.getElementById('fZip').value.trim(),
+        city: document.getElementById('fCity').value.trim(),
+        lat: document.getElementById('fLat').value.trim(),
+        lng: document.getElementById('fLng').value.trim(),
         executionDate: document.getElementById('fDate').value,
         executionTime: document.getElementById('fTime').value,
         roughStaking: document.getElementById('fRoughStaking').checked,
         heightRef: document.getElementById('fHeightRef').checked,
+        conditionsSigned: document.getElementById('fConditionsSigned').checked,
         accessDescription: document.getElementById('fAccessDesc').value.trim(),
         material: document.getElementById('fMaterial').value.trim(),
         machinery: document.getElementById('fMachinery').value.trim(),
-        accessPhotos: accessPhotos,
-        docStatuses: []
+        accessFiles: accessFiles,
+        docStatuses: [],
+        status: 'aktiv'
       };
+
+      // Preserve existing status if editing
+      if (currentId) {
+        var existing = getItemById('projects', currentId);
+        if (existing && existing.status) data.status = existing.status;
+      }
 
       // Document statuses
       DOC_TYPES.forEach(function(_, i) {
@@ -516,15 +644,17 @@
         data.docStatuses.push(checked ? checked.value : '');
       });
 
-      // Validate (warnings only)
+      // Validate (warnings only, never block save)
       var hasWarning = false;
       var checks = [
-        { field: 'fName', warn: 'wName', val: data.name },
-        { field: 'fType', warn: 'wType', val: data.type },
-        { field: 'fClient', warn: 'wClient', val: data.client },
-        { field: 'fContact', warn: 'wContact', val: data.contact },
-        { field: 'fAddress', warn: 'wAddress', val: data.address },
-        { field: 'fDate', warn: 'wDate', val: data.executionDate }
+        { warn: 'wName', val: data.name },
+        { warn: 'wType', val: data.type },
+        { warn: 'wClient', val: data.client },
+        { warn: 'wContact', val: data.contact },
+        { warn: 'wStreet', val: data.street },
+        { warn: 'wZip', val: data.zip },
+        { warn: 'wCity', val: data.city },
+        { warn: 'wDate', val: data.executionDate }
       ];
 
       checks.forEach(function(c) {
@@ -533,12 +663,11 @@
         if (empty) hasWarning = true;
       });
 
-      // Save anyway (drafts allowed)
       var id = currentId || generateId();
       saveToLocal('projects', id, data);
 
       if (hasWarning) {
-        showToast('Gespeichert (mit fehlenden Pflichtfeldern)', 'warning');
+        showToast('Gespeichert (fehlende Pflichtfelder)', 'warning');
       } else {
         showToast('Projekt gespeichert', 'success');
       }
@@ -549,33 +678,31 @@
       document.getElementById('btnDelete').style.display = '';
     });
 
-    // --- Delete ---
+    // =============================================
+    //  DELETE / BACK
+    // =============================================
+
     document.getElementById('btnDelete').addEventListener('click', function() {
-      if (currentId) {
-        var p = getItemById('projects', currentId);
-        var label = p ? p.name : '';
-        if (softDelete('projects', currentId, label)) {
-          showToast('Projekt geloescht', 'success');
-          showList();
-        }
+      if (!currentId) return;
+      var p = getItemById('projects', currentId);
+      if (softDelete('projects', currentId, p ? p.name : '')) {
+        showToast('Projekt geloescht', 'success');
+        showList();
       }
     });
 
-    // --- Back ---
     document.getElementById('btnBack').addEventListener('click', function() {
       showList();
     });
 
-    // --- Phone click-to-call ---
-    document.getElementById('fPhone').addEventListener('focus', function() {
-      // Ensure tel: links work
-    });
+    // =============================================
+    //  HELPERS
+    // =============================================
 
-    // --- Utilities ---
-    function escapeHtml(str) {
-      var div = document.createElement('div');
-      div.textContent = str || '';
-      return div.innerHTML;
+    function esc(str) {
+      var d = document.createElement('div');
+      d.textContent = str || '';
+      return d.innerHTML;
     }
   </script>
 </body>
