@@ -21,25 +21,36 @@ const storage = firebase.storage();
 
 // --- Auth ---
 
-/** Google Sign-In via redirect (PWA/iOS safe) */
-function signInWithGoogle() {
+/** Google Sign-In: Popup first, fallback to redirect if blocked */
+async function signInWithGoogle() {
   var provider = new firebase.auth.GoogleAuthProvider();
-  return auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).then(function() {
-    console.log('Persistence set to LOCAL, starting redirect');
-    return auth.signInWithRedirect(provider);
-  });
+  await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+  try {
+    console.log('Trying signInWithPopup');
+    await auth.signInWithPopup(provider);
+  } catch (error) {
+    if (error.code === 'auth/popup-blocked' ||
+        error.code === 'auth/popup-closed-by-user' ||
+        error.code === 'auth/cancelled-popup-request') {
+      console.log('Popup blocked, falling back to redirect');
+      await auth.signInWithRedirect(provider);
+    } else {
+      console.error('Login error:', error);
+      throw error;
+    }
+  }
 }
 
 /** Sign out */
 function signOut() {
-  return auth.signOut().then(() => {
+  return auth.signOut().then(function() {
     window.location.href = 'index.html';
   });
 }
 
 /**
  * Initialize app with auth guard.
- * On login page: waits for getRedirectResult() first, then listens to auth state.
+ * On login page: handles redirect fallback result, then listens to auth state.
  * On other pages: redirects to index.html if not logged in.
  * Calls callback(user) when authenticated.
  */
@@ -48,7 +59,7 @@ function initApp(callback) {
                     window.location.pathname.endsWith('/');
 
   if (isLoginPage) {
-    // On login page: first handle redirect result, then check auth state
+    // Handle redirect fallback result first
     console.log('getRedirectResult started');
     auth.getRedirectResult().then(function(result) {
       console.log('getRedirectResult resolved: ' + (result.user ? result.user.email : null));
@@ -57,28 +68,19 @@ function initApp(callback) {
         window.location.href = 'dashboard.html';
         return;
       }
-      // No redirect result — listen for existing session
-      auth.onAuthStateChanged(function(user) {
-        console.log('onAuthStateChanged: ' + (user ? user.email : null));
-        if (user) {
-          console.log('redirecting to dashboard');
-          window.location.href = 'dashboard.html';
-        } else {
-          if (callback) callback(null);
-        }
-      });
     }).catch(function(err) {
       console.error('getRedirectResult error:', err);
-      // Fallback: listen for auth state anyway
-      auth.onAuthStateChanged(function(user) {
-        console.log('onAuthStateChanged (fallback): ' + (user ? user.email : null));
-        if (user) {
-          console.log('redirecting to dashboard');
-          window.location.href = 'dashboard.html';
-        } else {
-          if (callback) callback(null);
-        }
-      });
+    });
+
+    // Main auth state listener
+    auth.onAuthStateChanged(function(user) {
+      console.log('onAuthStateChanged: ' + (user ? user.email : null));
+      if (user) {
+        console.log('redirecting to dashboard');
+        window.location.href = 'dashboard.html';
+      } else {
+        if (callback) callback(null);
+      }
     });
   } else {
     // On protected pages: just check auth state
