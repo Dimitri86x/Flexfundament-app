@@ -584,9 +584,21 @@
     // =============================================
 
     function renderLinkedRecords(projectId) {
+      // Reports — clickable links
       var reports = getActiveItems('reports').filter(function(r) { return r.projectId === projectId; });
-      document.getElementById('linkedReports').textContent =
-        reports.length === 0 ? 'Noch keine Einsatzberichte' : reports.length + ' Einsatzbericht' + (reports.length > 1 ? 'e' : '');
+      var elReports = document.getElementById('linkedReports');
+      if (reports.length === 0) {
+        elReports.innerHTML = 'Noch keine Einsatzberichte';
+      } else {
+        elReports.innerHTML = reports.map(function(r) {
+          var label = (r.date ? formatDate(r.date) : 'Ohne Datum') +
+            (r.workers && r.workers.length ? ' — ' + esc(r.workers.join(', ')) : '');
+          var status = r.status || 'entwurf';
+          var badgeClass = status === 'abgeschlossen' ? 'badge-abgeschlossen' : 'badge-entwurf';
+          return '<a href="reports.html?id=' + r.id + '" style="display:block;padding:6px 0;border-bottom:1px solid var(--color-border);">' +
+            esc(label) + ' <span class="badge ' + badgeClass + '">' + esc(status) + '</span></a>';
+        }).join('');
+      }
 
       var docs = getActiveItems('documents').filter(function(d) { return d.projectId === projectId; });
       document.getElementById('linkedDocuments').textContent =

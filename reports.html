@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Flexfundament App – Einsatzberichte</title>
+  <link rel="stylesheet" href="shared.css">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#1565c0">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <style>
+    .tags-container{display:flex;flex-wrap:wrap;gap:4px;padding:8px;border:1px solid var(--color-border);border-radius:var(--radius);min-height:var(--touch-min);cursor:text;background:var(--color-surface)}
+    .tag{display:inline-flex;align-items:center;gap:4px;background:var(--color-primary);color:#fff;padding:2px 8px;border-radius:12px;font-size:.8rem}
+    .tag-remove{background:none;border:none;color:#fff;cursor:pointer;font-size:1rem;padding:0 2px;line-height:1}
+    .tags-input{border:none;outline:none;font-size:.9rem;min-width:80px;flex:1;padding:4px;font-family:inherit}
+    .autocomplete-list{position:absolute;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius);box-shadow:var(--shadow-lg);max-height:150px;overflow-y:auto;z-index:50;width:100%}
+    .autocomplete-item{padding:10px 12px;cursor:pointer;font-size:.85rem}
+    .autocomplete-item:hover,.autocomplete-item.active{background:var(--color-bg)}
+    .activity-row{display:flex;align-items:center;gap:8px;padding:8px 0;flex-wrap:wrap}
+    .activity-row label{display:flex;align-items:center;gap:6px;font-size:.85rem;min-height:var(--touch-min)}
+    .activity-count{width:70px}
+    .toggle-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0}
+    .toggle-label{font-size:.85rem;flex:1;padding-right:8px}
+    .toggle-switch{position:relative;width:48px;height:28px;flex-shrink:0}
+    .toggle-switch input{opacity:0;width:0;height:0}
+    .toggle-slider{position:absolute;inset:0;background:var(--color-border);border-radius:14px;cursor:pointer;transition:background .2s}
+    .toggle-slider::before{content:'';position:absolute;width:22px;height:22px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:transform .2s}
+    .toggle-switch input:checked+.toggle-slider{background:var(--color-primary)}
+    .toggle-switch input:checked+.toggle-slider::before{transform:translateX(20px)}
+    .upload-buttons{display:flex;gap:8px;flex-wrap:wrap}
+    .upload-buttons .btn{font-size:.8rem;padding:8px 12px}
+    .upload-buttons input[type="file"]{display:none}
+    .photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:8px;margin-top:8px}
+    .photo-thumb{position:relative;aspect-ratio:1;border-radius:var(--radius-sm);overflow:hidden;border:1px solid var(--color-border)}
+    .photo-thumb img{width:100%;height:100%;object-fit:cover}
+    .photo-thumb-pdf{display:flex;align-items:center;justify-content:center;width:100%;height:100%;background:#f5f5f5;font-size:.65rem;text-align:center;padding:4px;word-break:break-all;color:var(--color-text-secondary)}
+    .photo-remove{position:absolute;top:2px;right:2px;width:24px;height:24px;background:rgba(0,0,0,.6);color:#fff;border:none;border-radius:50%;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+    .photo-item{border:1px solid var(--color-border);border-radius:var(--radius);padding:8px;margin-bottom:8px}
+    .photo-item img{width:100%;max-height:200px;object-fit:contain;border-radius:var(--radius-sm)}
+    .photo-item .photo-thumb-pdf{height:80px}
+    .btn-row{display:flex;gap:8px;margin-top:8px}
+    .btn-row .btn{flex:1}
+    #obstacleFields{display:none}
+  </style>
+</head>
+<body>
+
+  <!-- LIST VIEW -->
+  <div id="listView" class="page">
+    <div class="filter-bar">
+      <select class="form-select" id="filterProject"><option value="">Alle Projekte</option></select>
+      <select class="form-select" id="filterStatus">
+        <option value="">Alle Status</option>
+        <option value="entwurf">Entwurf</option>
+        <option value="abgeschlossen">Abgeschlossen</option>
+      </select>
+    </div>
+    <div id="reportList"></div>
+    <button class="fab" id="btnNew" title="Neuer Einsatzbericht">+</button>
+  </div>
+
+  <!-- FORM VIEW -->
+  <div id="formView" class="page" style="display:none;">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">
+      <button class="btn-back" id="btnBack" type="button">&#8592; Zurueck</button>
+      <h2 style="font-size:1.1rem;font-weight:600;" id="formTitle">Neuer Einsatzbericht</h2>
+    </div>
+
+    <form id="reportForm" novalidate>
+      <!-- Einsatzdaten -->
+      <div class="card">
+        <div class="card-title">Einsatzdaten</div>
+        <div class="form-group">
+          <label class="form-label">Projekt <span class="required">*</span></label>
+          <select class="form-select" id="fProject" required><option value="">Bitte waehlen</option></select>
+          <div class="form-warning" id="wProject">Bitte Projekt waehlen</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Datum <span class="required">*</span></label>
+          <input type="date" class="form-input" id="fDate" required>
+          <div class="form-warning" id="wDate">Bitte Datum eingeben</div>
+        </div>
+        <div class="form-group" style="position:relative;">
+          <label class="form-label">Mitarbeiter <span class="required">*</span></label>
+          <div class="tags-container" id="tagsContainer">
+            <input type="text" class="tags-input" id="fWorkerInput" placeholder="Name eingeben...">
+          </div>
+          <div class="autocomplete-list" id="workerAutocomplete" style="display:none;"></div>
+          <div class="form-warning" id="wWorkers">Bitte mindestens einen Mitarbeiter eingeben</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Status</label>
+          <select class="form-select" id="fStatus">
+            <option value="entwurf">Entwurf</option>
+            <option value="abgeschlossen">Abgeschlossen</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Zeiterfassung -->
+      <div class="card">
+        <div class="card-title">Zeiterfassung</div>
+        <div class="form-group">
+          <label class="form-label">Beginn Arbeit <span class="required">*</span></label>
+          <input type="time" class="form-input" id="fTimeStart" required>
+          <div class="form-warning" id="wTimeStart">Bitte Beginn eingeben</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Ende Arbeit <span class="required">*</span></label>
+          <input type="time" class="form-input" id="fTimeEnd" required>
+          <div class="form-warning" id="wTimeEnd">Bitte Ende eingeben</div>
+          <div class="form-error" id="eTimeEnd">Ende muss nach Beginn liegen</div>
+        </div>
+      </div>
+
+      <!-- Taetigkeit -->
+      <div class="card">
+        <div class="card-title">Taetigkeit</div>
+        <div class="form-warning" id="wActivity" style="margin-bottom:8px;">Bitte mindestens eine Taetigkeit waehlen</div>
+        <div class="activity-row">
+          <label><input type="checkbox" id="actPull"> Auszugversuch</label>
+          <input type="number" class="form-input activity-count" id="actPullCount" placeholder="Anz." min="0" style="display:none;">
+        </div>
+        <div class="activity-row">
+          <label><input type="checkbox" id="actScrew"> Eindrehversuch</label>
+          <input type="number" class="form-input activity-count" id="actScrewCount" placeholder="Anz." min="0" style="display:none;">
+        </div>
+        <div class="activity-row">
+          <label><input type="checkbox" id="actMontage"> Montage</label>
+          <input type="number" class="form-input activity-count" id="actMontageCount" placeholder="Anz." min="0" style="display:none;">
+        </div>
+        <div class="activity-row">
+          <label><input type="checkbox" id="actSurvey"> Einmessen</label>
+        </div>
+        <div class="form-group mt-sm">
+          <label class="form-label">Zusatzleistung</label>
+          <input type="text" class="form-input" id="actExtra">
+        </div>
+      </div>
+
+      <!-- Bauverhinderung -->
+      <div class="collapsible" id="colObstacle">
+        <div class="collapsible-header">Bauverhinderung <span class="collapsible-arrow">&#9660;</span></div>
+        <div class="collapsible-body">
+          <div class="toggle-row">
+            <span class="toggle-label">Hindernis vorhanden?</span>
+            <label class="toggle-switch"><input type="checkbox" id="fObstacle"><span class="toggle-slider"></span></label>
+          </div>
+          <div id="obstacleFields">
+            <div class="form-group">
+              <label class="form-label">Grund <span class="required">*</span></label>
+              <select class="form-select" id="fObstacleReason">
+                <option value="">Bitte waehlen</option>
+                <option>Wetter</option>
+                <option>Fehlende Unterlagen</option>
+                <option>Fehlende Freigabe</option>
+                <option>Fehlende Absteckung</option>
+                <option>Fehlender Hoehenbezugspunkt</option>
+                <option>Baustelle nicht zugaenglich</option>
+                <option>Material fehlt</option>
+                <option>Maschine fehlt/defekt</option>
+                <option>Kunde nicht vorbereitet</option>
+                <option>Hindernis im Baufeld</option>
+                <option>Sonstiges</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Problembeschreibung <span class="required">*</span></label>
+              <textarea class="form-textarea" id="fObstacleDesc" rows="3"></textarea>
+              <div class="form-warning" id="wObstacleDesc">Bitte Beschreibung eingeben</div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Foto</label>
+              <div class="upload-buttons">
+                <button type="button" class="btn btn-secondary btn-upload" data-target="inputObsCam">&#128247; Kamera</button>
+                <button type="button" class="btn btn-secondary btn-upload" data-target="inputObsGal">&#128444; Galerie</button>
+                <button type="button" class="btn btn-secondary btn-upload" data-target="inputObsFile">&#128196; Datei</button>
+                <input type="file" id="inputObsCam" accept="image/*" capture="environment">
+                <input type="file" id="inputObsGal" accept="image/*" multiple>
+                <input type="file" id="inputObsFile" accept="image/*,application/pdf,.pdf" multiple>
+              </div>
+              <div class="photo-grid" id="obstaclePhotoGrid"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Notizen -->
+      <div class="card">
+        <div class="card-title">Notizen / Baufortschritt <span class="required">*</span></div>
+        <textarea class="form-textarea" id="fNotes" rows="4"></textarea>
+        <div class="form-warning" id="wNotes">Bitte Notizen eingeben</div>
+      </div>
+
+      <!-- Gespraechsnotizen -->
+      <div class="collapsible">
+        <div class="collapsible-header">Gespraechsnotizen mit AG <span class="collapsible-arrow">&#9660;</span></div>
+        <div class="collapsible-body">
+          <textarea class="form-textarea" id="fClientNotes" rows="3"></textarea>
+        </div>
+      </div>
+
+      <!-- Fotos -->
+      <div class="collapsible">
+        <div class="collapsible-header">Fotos <span class="collapsible-arrow">&#9660;</span></div>
+        <div class="collapsible-body">
+          <div class="upload-buttons">
+            <button type="button" class="btn btn-secondary btn-upload" data-target="inputPhotoCam">&#128247; Kamera</button>
+            <button type="button" class="btn btn-secondary btn-upload" data-target="inputPhotoGal">&#128444; Galerie</button>
+            <button type="button" class="btn btn-secondary btn-upload" data-target="inputPhotoFile">&#128196; Datei</button>
+            <input type="file" id="inputPhotoCam" accept="image/*" capture="environment">
+            <input type="file" id="inputPhotoGal" accept="image/*" multiple>
+            <input type="file" id="inputPhotoFile" accept="image/*,application/pdf,.pdf" multiple>
+          </div>
+          <div id="photosList" style="margin-top:8px;"></div>
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <button type="submit" class="btn btn-primary btn-block">Speichern</button>
+      <div class="btn-row">
+        <button type="button" class="btn btn-secondary" id="btnPdf" style="display:none;">PDF erstellen</button>
+        <button type="button" class="btn btn-danger" id="btnDelete" style="display:none;">Loeschen</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- jsPDF -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js"></script>
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
+  <script src="shared.js"></script>
+  <script src="reports-logic.js"></script>
+</body>
+</html>
