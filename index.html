@@ -39,9 +39,11 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
   <script src="shared.js"></script>
   <script>
+    // Spinner is visible by default — stays until getRedirectResult resolves
     initApp(function(user) {
-      // If user is null, we're on the login page and not logged in
+      // Only called with null when getRedirectResult is done and no user found
       if (!user) {
+        console.log('No user found — showing login button');
         document.getElementById('loginSpinner').style.display = 'none';
         document.getElementById('btnGoogleLogin').style.display = 'inline-flex';
       }
@@ -49,6 +51,7 @@
     });
 
     document.getElementById('btnGoogleLogin').addEventListener('click', function() {
+      console.log('Google login button clicked');
       this.disabled = true;
       document.getElementById('loginSpinner').style.display = '';
       this.style.display = 'none';

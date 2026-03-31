@@ -36,28 +36,58 @@ function signOut() {
 
 /**
  * Initialize app with auth guard.
- * Redirects to index.html if not logged in (unless on index.html).
+ * On login page: waits for getRedirectResult() first, then listens to auth state.
+ * On other pages: redirects to index.html if not logged in.
  * Calls callback(user) when authenticated.
  */
 function initApp(callback) {
-  auth.onAuthStateChanged(function(user) {
-    const isLoginPage = window.location.pathname.endsWith('index.html') ||
-                        window.location.pathname.endsWith('/');
+  var isLoginPage = window.location.pathname.endsWith('index.html') ||
+                    window.location.pathname.endsWith('/');
 
-    if (user) {
-      if (isLoginPage) {
+  if (isLoginPage) {
+    // On login page: first handle redirect result, then check auth state
+    console.log('getRedirectResult started');
+    auth.getRedirectResult().then(function(result) {
+      console.log('getRedirectResult resolved: ' + (result.user ? result.user.email : null));
+      if (result.user) {
+        console.log('redirecting to dashboard');
         window.location.href = 'dashboard.html';
         return;
       }
-      if (callback) callback(user);
-    } else {
-      if (!isLoginPage) {
+      // No redirect result — listen for existing session
+      auth.onAuthStateChanged(function(user) {
+        console.log('onAuthStateChanged: ' + (user ? user.email : null));
+        if (user) {
+          console.log('redirecting to dashboard');
+          window.location.href = 'dashboard.html';
+        } else {
+          if (callback) callback(null);
+        }
+      });
+    }).catch(function(err) {
+      console.error('getRedirectResult error:', err);
+      // Fallback: listen for auth state anyway
+      auth.onAuthStateChanged(function(user) {
+        console.log('onAuthStateChanged (fallback): ' + (user ? user.email : null));
+        if (user) {
+          console.log('redirecting to dashboard');
+          window.location.href = 'dashboard.html';
+        } else {
+          if (callback) callback(null);
+        }
+      });
+    });
+  } else {
+    // On protected pages: just check auth state
+    auth.onAuthStateChanged(function(user) {
+      console.log('onAuthStateChanged: ' + (user ? user.email : null));
+      if (user) {
+        if (callback) callback(user);
+      } else {
         window.location.href = 'index.html';
-        return;
       }
-      if (callback) callback(null);
-    }
-  });
+    });
+  }
 
   // Initialize online/offline detection
   initOnlineStatus();
