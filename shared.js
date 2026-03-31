@@ -2,8 +2,8 @@
    Flexfundament App – Shared Logic
    ============================================ */
 
-// --- Firebase Config (replace with real values) ---
-const firebaseConfig = {
+// --- Firebase Config ---
+var firebaseConfig = {
   apiKey: "AIzaSyDh0smzZqkiCqUV93_LsoMaml0698noysQ",
   authDomain: "flexfundament-app.firebaseapp.com",
   databaseURL: "https://flexfundament-app-default-rtdb.europe-west1.firebasedatabase.app",
@@ -15,33 +15,81 @@ const firebaseConfig = {
 
 // Initialize Firebase
 firebase.initializeApp(firebaseConfig);
-const auth = firebase.auth();
-const db = firebase.database();
-const storage = firebase.storage();
+var auth = firebase.auth();
+var db = firebase.database();
+var storage = firebase.storage();
+
+// Explicitly set LOCAL persistence on init
+auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(function(err) {
+  console.warn('setPersistence error:', err);
+});
 
 // --- Auth ---
 
-/** Google Sign-In: Popup first, fallback to redirect if blocked */
-async function signInWithGoogle() {
+/**
+ * Detect if current page is the login page.
+ * Works on GitHub Pages subpaths and local dev.
+ */
+function isLoginPage() {
+  var path = window.location.pathname;
+  // Matches: /index.html, /foo/index.html, /, /foo/, /foo (no extension = likely root)
+  if (path.endsWith('/index.html')) return true;
+  if (path.endsWith('/')) return true;
+  // No file extension and no other known page = assume login
+  var knownPages = ['dashboard', 'projects', 'reports', 'documents', 'drives', 'costs', 'calendar'];
+  for (var i = 0; i < knownPages.length; i++) {
+    if (path.indexOf(knownPages[i]) !== -1) return false;
+  }
+  return true;
+}
+
+/**
+ * Google Sign-In: Popup first, fallback to redirect if blocked.
+ * Returns a Promise that rejects with a displayable error on failure.
+ */
+function signInWithGoogle() {
   var provider = new firebase.auth.GoogleAuthProvider();
-  await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
-  try {
-    console.log('Trying signInWithPopup');
-    await auth.signInWithPopup(provider);
-  } catch (error) {
+  console.log('[Auth] signInWithGoogle called');
+
+  return auth.signInWithPopup(provider).then(function(result) {
+    console.log('[Auth] signInWithPopup success:', result.user.email);
+    // onAuthStateChanged will handle the redirect
+  }).catch(function(error) {
+    console.warn('[Auth] signInWithPopup error:', error.code, error.message);
+
+    // Popup blocked/closed → fallback to redirect
     if (error.code === 'auth/popup-blocked' ||
         error.code === 'auth/popup-closed-by-user' ||
         error.code === 'auth/cancelled-popup-request') {
-      console.log('Popup blocked, falling back to redirect');
-      await auth.signInWithRedirect(provider);
-    } else {
-      console.error('Login error:', error);
-      throw error;
+      console.log('[Auth] Falling back to signInWithRedirect');
+      return auth.signInWithRedirect(provider);
     }
-  }
+
+    // All other errors: re-throw with user-friendly message
+    var msg = 'Login fehlgeschlagen: ';
+    switch (error.code) {
+      case 'auth/unauthorized-domain':
+        msg += 'Diese Domain ist nicht autorisiert. Bitte "' + window.location.hostname +
+               '" in der Firebase Console unter Authentication → Settings → Authorized Domains hinzufuegen.';
+        break;
+      case 'auth/operation-not-allowed':
+        msg += 'Google Sign-In ist in der Firebase Console nicht aktiviert.';
+        break;
+      case 'auth/network-request-failed':
+        msg += 'Netzwerkfehler. Bitte Internetverbindung pruefen.';
+        break;
+      case 'auth/internal-error':
+        msg += 'Interner Firebase-Fehler. Bitte spaeter erneut versuchen.';
+        break;
+      default:
+        msg += error.code + ' – ' + error.message;
+    }
+    error.displayMessage = msg;
+    throw error;
+  });
 }
 
-/** Sign out */
+/** Sign out and redirect to login */
 function signOut() {
   return auth.signOut().then(function() {
     window.location.href = 'index.html';
@@ -50,56 +98,103 @@ function signOut() {
 
 /**
  * Initialize app with auth guard.
- * On login page: handles redirect fallback result, then listens to auth state.
- * On other pages: redirects to index.html if not logged in.
- * Calls callback(user) when authenticated.
+ * On login page: handles redirect result + listens to auth state.
+ * On protected pages: waits for auth to resolve, redirects if not logged in.
  */
 function initApp(callback) {
-  var isLoginPage = window.location.pathname.endsWith('index.html') ||
-                    window.location.pathname.endsWith('/');
+  var onLogin = isLoginPage();
+  console.log('[Auth] initApp, isLoginPage=' + onLogin, 'path=' + window.location.pathname);
 
-  if (isLoginPage) {
-    // Handle redirect fallback result first
-    console.log('getRedirectResult started');
-    auth.getRedirectResult().then(function(result) {
-      console.log('getRedirectResult resolved: ' + (result.user ? result.user.email : null));
-      if (result.user) {
-        console.log('redirecting to dashboard');
-        window.location.href = 'dashboard.html';
-        return;
-      }
-    }).catch(function(err) {
-      console.error('getRedirectResult error:', err);
-    });
-
-    // Main auth state listener
-    auth.onAuthStateChanged(function(user) {
-      console.log('onAuthStateChanged: ' + (user ? user.email : null));
-      if (user) {
-        console.log('redirecting to dashboard');
-        window.location.href = 'dashboard.html';
-      } else {
-        if (callback) callback(null);
-      }
-    });
+  if (onLogin) {
+    _initLoginPage(callback);
   } else {
-    // On protected pages: just check auth state
-    auth.onAuthStateChanged(function(user) {
-      console.log('onAuthStateChanged: ' + (user ? user.email : null));
-      if (user) {
-        if (callback) callback(user);
-      } else {
-        window.location.href = 'index.html';
-      }
-    });
+    _initProtectedPage(callback);
   }
 
   // Initialize online/offline detection
   initOnlineStatus();
 }
 
+/**
+ * Login page initialization:
+ * 1. Check getRedirectResult (for redirect fallback)
+ * 2. Listen to onAuthStateChanged
+ * 3. Show login button only when we're sure no user is logged in
+ */
+function _initLoginPage(callback) {
+  var handled = false;
+
+  // Handle redirect result (fires if user came back from signInWithRedirect)
+  console.log('[Auth] getRedirectResult started');
+  auth.getRedirectResult().then(function(result) {
+    console.log('[Auth] getRedirectResult resolved:', result.user ? result.user.email : 'null');
+    if (result.user && !handled) {
+      handled = true;
+      console.log('[Auth] Redirecting to dashboard (from redirect result)');
+      window.location.href = 'dashboard.html';
+    }
+  }).catch(function(err) {
+    console.error('[Auth] getRedirectResult error:', err.code, err.message);
+  });
+
+  // Main auth state listener
+  auth.onAuthStateChanged(function(user) {
+    console.log('[Auth] onAuthStateChanged:', user ? user.email : 'null');
+    if (user && !handled) {
+      handled = true;
+      console.log('[Auth] Redirecting to dashboard (from onAuthStateChanged)');
+      window.location.href = 'dashboard.html';
+    } else if (!user && !handled) {
+      // Definitely no user — show login UI
+      console.log('[Auth] No user — showing login button');
+      if (callback) callback(null);
+    }
+  });
+}
+
+/**
+ * Protected page initialization:
+ * Uses auth.onAuthStateChanged but gives Firebase time to restore the session.
+ * Prevents the race condition where null fires before persistence is loaded.
+ */
+function _initProtectedPage(callback) {
+  // Flag: has the first auth state fired?
+  var resolved = false;
+
+  auth.onAuthStateChanged(function(user) {
+    console.log('[Auth] onAuthStateChanged (protected):', user ? user.email : 'null');
+
+    if (user) {
+      resolved = true;
+      if (callback) callback(user);
+      return;
+    }
+
+    if (resolved) {
+      // User was logged in but signed out during session
+      console.log('[Auth] User signed out, redirecting to login');
+      window.location.href = 'index.html';
+      return;
+    }
+
+    // First fire was null — might be a race condition.
+    // Wait briefly for Firebase to load persisted session.
+    resolved = true;
+    console.log('[Auth] First auth state is null, waiting 1500ms for persistence...');
+    setTimeout(function() {
+      var currentUser = auth.currentUser;
+      console.log('[Auth] After wait, currentUser:', currentUser ? currentUser.email : 'null');
+      if (!currentUser) {
+        console.log('[Auth] Confirmed: no user. Redirecting to login.');
+        window.location.href = 'index.html';
+      }
+      // If currentUser exists, onAuthStateChanged will fire again with user
+    }, 1500);
+  });
+}
+
 // --- Online/Offline Detection ---
-let isOnline = navigator.onLine;
+var isOnline = navigator.onLine;
 
 function initOnlineStatus() {
   updateOnlineUI();
@@ -108,7 +203,6 @@ function initOnlineStatus() {
     isOnline = true;
     updateOnlineUI();
     showToast('Wieder online', 'success');
-    // Sync all collections when back online
     syncAllCollections();
   });
 
@@ -149,12 +243,10 @@ function saveToLocal(collection, id, data) {
   data.savedBy = user ? user.uid : 'anonymous';
   if (data.deleted === undefined) data.deleted = false;
 
-  // Save to localStorage
   var store = loadFromLocal(collection);
   store[id] = data;
   localStorage.setItem('ff_' + collection, JSON.stringify(store));
 
-  // Attempt Firebase sync
   if (isOnline) {
     syncItemToFirebase(collection, id, data);
   }
@@ -164,7 +256,6 @@ function saveToLocal(collection, id, data) {
 
 /**
  * Load all items of a collection from localStorage.
- * Returns object { id: data, ... }
  */
 function loadFromLocal(collection) {
   try {
@@ -176,7 +267,7 @@ function loadFromLocal(collection) {
 }
 
 /**
- * Get list of non-deleted items from a collection, sorted by savedAt descending.
+ * Get list of non-deleted items, sorted by savedAt descending.
  */
 function getActiveItems(collection) {
   var store = loadFromLocal(collection);
@@ -210,8 +301,7 @@ function syncItemToFirebase(collection, id, data) {
 }
 
 /**
- * Full two-way sync for a collection.
- * Merges Firebase data with localStorage using Last-Write-Wins (savedAt).
+ * Full two-way sync for a collection (Last-Write-Wins via savedAt).
  */
 function syncWithFirebase(collection) {
   if (!isOnline) return Promise.resolve();
@@ -220,36 +310,29 @@ function syncWithFirebase(collection) {
     var remoteData = snapshot.val() || {};
     var localData = loadFromLocal(collection);
     var merged = {};
-    var changed = false;
 
-    // Merge: iterate all keys from both sources
     var allKeys = new Set(Object.keys(localData).concat(Object.keys(remoteData)));
     allKeys.forEach(function(id) {
       var local = localData[id];
       var remote = remoteData[id];
 
       if (local && remote) {
-        // Both exist: Last-Write-Wins
         if ((local.savedAt || 0) >= (remote.savedAt || 0)) {
           merged[id] = local;
-          // Push local version to Firebase if newer
           if ((local.savedAt || 0) > (remote.savedAt || 0)) {
             syncItemToFirebase(collection, id, local);
           }
         } else {
           merged[id] = remote;
-          changed = true;
         }
       } else if (local) {
         merged[id] = local;
         syncItemToFirebase(collection, id, local);
       } else {
         merged[id] = remote;
-        changed = true;
       }
     });
 
-    // Save merged data to localStorage
     localStorage.setItem('ff_' + collection, JSON.stringify(merged));
     return merged;
   }).catch(function(err) {
@@ -259,10 +342,6 @@ function syncWithFirebase(collection) {
 
 // --- Soft Delete ---
 
-/**
- * Soft-delete an item with confirmation dialog.
- * Returns true if deleted, false if cancelled.
- */
 function softDelete(collection, id, label) {
   var msg = 'Soll "' + (label || 'dieser Eintrag') + '" wirklich geloescht werden?';
   if (!confirm(msg)) return false;
@@ -282,9 +361,6 @@ function softDelete(collection, id, label) {
 
 // --- Autocomplete ---
 
-/**
- * Get unique values for a field from a collection (for autocomplete suggestions).
- */
 function getAutocompleteSuggestions(collection, field) {
   var items = getActiveItems(collection);
   var values = {};
@@ -305,57 +381,35 @@ function getAutocompleteSuggestions(collection, field) {
 
 // --- Image Compression ---
 
-/**
- * Compress an image file to maxWidth and maxSizeMB.
- * Returns a Promise resolving to a Blob.
- */
 function compressImage(file, maxWidth, maxSizeMB) {
   maxWidth = maxWidth || 1920;
   maxSizeMB = maxSizeMB || 5;
 
-  return new Promise(function(resolve, reject) {
-    // Skip non-images
+  return new Promise(function(resolve) {
     if (!file.type.startsWith('image/')) {
       resolve(file);
       return;
     }
 
-    // Skip if already small enough
-    if (file.size <= maxSizeMB * 1024 * 1024) {
-      var img = new Image();
-      var url = URL.createObjectURL(file);
-      img.onload = function() {
-        if (img.width <= maxWidth) {
-          URL.revokeObjectURL(url);
-          resolve(file);
-          return;
-        }
-        compressWithCanvas(img, file.type, maxWidth, maxSizeMB, resolve);
-        URL.revokeObjectURL(url);
-      };
-      img.onerror = function() {
-        URL.revokeObjectURL(url);
+    var img = new Image();
+    var url = URL.createObjectURL(file);
+    img.onload = function() {
+      URL.revokeObjectURL(url);
+      if (img.width <= maxWidth && file.size <= maxSizeMB * 1024 * 1024) {
         resolve(file);
-      };
-      img.src = url;
-      return;
-    }
-
-    var img2 = new Image();
-    var url2 = URL.createObjectURL(file);
-    img2.onload = function() {
-      compressWithCanvas(img2, file.type, maxWidth, maxSizeMB, resolve);
-      URL.revokeObjectURL(url2);
+        return;
+      }
+      compressWithCanvas(img, file.type, maxWidth, resolve);
     };
-    img2.onerror = function() {
-      URL.revokeObjectURL(url2);
+    img.onerror = function() {
+      URL.revokeObjectURL(url);
       resolve(file);
     };
-    img2.src = url2;
+    img.src = url;
   });
 }
 
-function compressWithCanvas(img, mimeType, maxWidth, maxSizeMB, resolve) {
+function compressWithCanvas(img, mimeType, maxWidth, resolve) {
   var canvas = document.createElement('canvas');
   var ratio = Math.min(1, maxWidth / img.width);
   canvas.width = img.width * ratio;
@@ -371,10 +425,6 @@ function compressWithCanvas(img, mimeType, maxWidth, maxSizeMB, resolve) {
 
 // --- Navigation ---
 
-/**
- * Render the top navigation bar.
- * @param {string} activeTab - one of: 'dashboard', 'projects', 'calendar', 'drives', 'costs', 'documents', 'reports'
- */
 function renderNav(activeTab) {
   var moreItems = ['reports', 'drives', 'costs', 'documents'];
   var isMoreActive = moreItems.indexOf(activeTab) !== -1;
@@ -386,7 +436,6 @@ function renderNav(activeTab) {
   var tabs = document.createElement('div');
   tabs.className = 'nav-tabs';
 
-  // Main tabs
   var mainTabs = [
     { id: 'dashboard', label: 'Dashboard', href: 'dashboard.html' },
     { id: 'projects', label: 'Projekte', href: 'projects.html' },
@@ -401,7 +450,6 @@ function renderNav(activeTab) {
     tabs.appendChild(a);
   });
 
-  // More dropdown
   var more = document.createElement('div');
   more.className = 'nav-more';
 
@@ -411,10 +459,10 @@ function renderNav(activeTab) {
   moreBtn.setAttribute('aria-expanded', 'false');
   moreBtn.addEventListener('click', function(e) {
     e.stopPropagation();
-    var menu = more.querySelector('.nav-more-menu');
-    var isOpen = menu.classList.contains('open');
-    menu.classList.toggle('open');
-    moreBtn.setAttribute('aria-expanded', !isOpen);
+    var m = more.querySelector('.nav-more-menu');
+    var open = m.classList.contains('open');
+    m.classList.toggle('open');
+    moreBtn.setAttribute('aria-expanded', !open);
   });
 
   var menu = document.createElement('div');
@@ -439,7 +487,6 @@ function renderNav(activeTab) {
   more.appendChild(menu);
   tabs.appendChild(more);
 
-  // Online indicator in nav
   var indicator = document.createElement('div');
   indicator.className = 'online-indicator';
   indicator.style.marginLeft = 'auto';
@@ -448,11 +495,8 @@ function renderNav(activeTab) {
   tabs.appendChild(indicator);
 
   nav.appendChild(tabs);
-
-  // Insert nav at top of body
   document.body.insertBefore(nav, document.body.firstChild);
 
-  // Close dropdown when clicking outside
   document.addEventListener('click', function() {
     var openMenu = document.querySelector('.nav-more-menu.open');
     if (openMenu) {
@@ -460,30 +504,24 @@ function renderNav(activeTab) {
       moreBtn.setAttribute('aria-expanded', 'false');
     }
   });
-
-  // User menu / sign-out (accessible via long-press on indicator or separate button)
 }
 
 // --- Utilities ---
 
-/** Format date as DD.MM.YYYY */
 function formatDate(dateStr) {
   if (!dateStr) return '';
   var d = new Date(dateStr);
   if (isNaN(d.getTime())) return dateStr;
   var day = String(d.getDate()).padStart(2, '0');
   var month = String(d.getMonth() + 1).padStart(2, '0');
-  var year = d.getFullYear();
-  return day + '.' + month + '.' + year;
+  return day + '.' + month + '.' + d.getFullYear();
 }
 
-/** Format time as HH:MM */
 function formatTime(timeStr) {
   if (!timeStr) return '';
   return timeStr.substring(0, 5);
 }
 
-/** Generate a Firebase-style push ID */
 function generateId() {
   var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   var now = Date.now();
@@ -498,12 +536,6 @@ function generateId() {
   return id;
 }
 
-/**
- * Show a toast message.
- * @param {string} message
- * @param {string} type - 'success', 'error', or '' (default)
- * @param {number} duration - ms (default 3000)
- */
 function showToast(message, type, duration) {
   duration = duration || 3000;
 
@@ -519,7 +551,6 @@ function showToast(message, type, duration) {
   toast.textContent = message;
   container.appendChild(toast);
 
-  // Trigger animation
   requestAnimationFrame(function() {
     toast.classList.add('show');
   });
@@ -532,32 +563,23 @@ function showToast(message, type, duration) {
   }, duration);
 }
 
-/**
- * Initialize collapsible sections.
- * Call after DOM is ready.
- */
 function initCollapsibles() {
   document.querySelectorAll('.collapsible-header').forEach(function(header) {
     header.addEventListener('click', function() {
-      var section = header.closest('.collapsible');
-      section.classList.toggle('open');
+      header.closest('.collapsible').classList.toggle('open');
     });
   });
 }
 
-/**
- * Get URL parameter by name.
- */
 function getUrlParam(name) {
-  var params = new URLSearchParams(window.location.search);
-  return params.get(name);
+  return new URLSearchParams(window.location.search).get(name);
 }
 
 // --- PWA Service Worker Registration ---
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', function() {
     navigator.serviceWorker.register('sw.js').catch(function(err) {
-      // Service worker registration failed
+      console.warn('SW registration failed:', err);
     });
   });
 }

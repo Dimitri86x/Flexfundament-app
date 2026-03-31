@@ -30,6 +30,17 @@
       <div class="spinner"></div>
       <p class="text-secondary mt-sm">Anmeldung wird geprueft...</p>
     </div>
+
+    <!-- Error display area -->
+    <div id="loginError" style="display:none; margin-top:16px; padding:12px 16px; background:#fdecea; color:#d32f2f; border-radius:8px; font-size:0.85rem; max-width:400px; text-align:left; word-break:break-word;"></div>
+
+    <!-- Debug info (visible for troubleshooting) -->
+    <div id="debugInfo" style="margin-top:24px; padding:12px; background:#f5f5f5; border-radius:8px; font-size:0.75rem; color:#666; max-width:400px; text-align:left;">
+      <strong>Debug-Info:</strong><br>
+      <span id="debugDomain">Domain: ...</span><br>
+      <span id="debugPath">Pfad: ...</span><br>
+      <span id="debugStatus">Status: Initialisiere...</span>
+    </div>
   </div>
 
   <!-- Firebase SDK (compat v10.12.0) -->
@@ -39,23 +50,49 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
   <script src="shared.js"></script>
   <script>
-    // Spinner is visible by default — stays until getRedirectResult resolves
+    // Show debug info
+    document.getElementById('debugDomain').textContent = 'Domain: ' + window.location.hostname;
+    document.getElementById('debugPath').textContent = 'Pfad: ' + window.location.pathname;
+
+    function showError(msg) {
+      var el = document.getElementById('loginError');
+      el.textContent = msg;
+      el.style.display = 'block';
+      document.getElementById('loginSpinner').style.display = 'none';
+      document.getElementById('btnGoogleLogin').style.display = 'inline-flex';
+      document.getElementById('btnGoogleLogin').disabled = false;
+    }
+
+    function setDebugStatus(status) {
+      document.getElementById('debugStatus').textContent = 'Status: ' + status;
+    }
+
+    // Initialize auth
+    setDebugStatus('Warte auf Firebase Auth...');
     initApp(function(user) {
-      // Only called with null when getRedirectResult is done and no user found
       if (!user) {
-        console.log('No user found — showing login button');
+        setDebugStatus('Kein Benutzer — Login-Button aktiv');
         document.getElementById('loginSpinner').style.display = 'none';
         document.getElementById('btnGoogleLogin').style.display = 'inline-flex';
       }
-      // If user exists, initApp already redirects to dashboard
     });
 
+    // Login button
     document.getElementById('btnGoogleLogin').addEventListener('click', function() {
-      console.log('Google login button clicked');
-      this.disabled = true;
+      var btn = this;
+      btn.disabled = true;
+      document.getElementById('loginError').style.display = 'none';
       document.getElementById('loginSpinner').style.display = '';
-      this.style.display = 'none';
-      signInWithGoogle();
+      btn.style.display = 'none';
+      setDebugStatus('Google-Anmeldung laeuft...');
+
+      signInWithGoogle().then(function() {
+        setDebugStatus('Anmeldung erfolgreich, warte auf Redirect...');
+      }).catch(function(error) {
+        console.error('[Auth] Login failed:', error);
+        setDebugStatus('Fehler: ' + error.code);
+        showError(error.displayMessage || error.message || 'Unbekannter Fehler');
+      });
     });
   </script>
 </body>
