@@ -601,8 +601,18 @@
       }
 
       var docs = getActiveItems('documents').filter(function(d) { return d.projectId === projectId; });
-      document.getElementById('linkedDocuments').textContent =
-        docs.length === 0 ? 'Noch keine Dokumente' : docs.length + ' Dokument' + (docs.length > 1 ? 'e' : '');
+      var elDocs = document.getElementById('linkedDocuments');
+      if (docs.length === 0) {
+        elDocs.innerHTML = 'Noch keine Dokumente';
+      } else {
+        elDocs.innerHTML = docs.map(function(d) {
+          var label = esc(d.fileName || 'Dokument');
+          var typeStr = d.docType ? ' (' + esc(d.docType) + ')' : '';
+          var dateStr = d.date ? ' — ' + formatDate(d.date) : '';
+          return '<a href="documents.html?id=' + d.id + '" style="display:block;padding:6px 0;border-bottom:1px solid var(--color-border);">' +
+            label + typeStr + dateStr + '</a>';
+        }).join('');
+      }
 
       var drives = getActiveItems('drives').filter(function(d) { return d.projectId === projectId; });
       document.getElementById('linkedDrives').textContent =

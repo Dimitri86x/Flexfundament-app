@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Flexfundament App – Dokumente</title>
+  <link rel="stylesheet" href="shared.css">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#1565c0">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <style>
+    .upload-buttons{display:flex;gap:8px;flex-wrap:wrap}
+    .upload-buttons .btn{font-size:.8rem;padding:8px 12px}
+    .upload-buttons input[type="file"]{display:none}
+    .doc-card-thumb{width:48px;height:48px;border-radius:var(--radius-sm);overflow:hidden;border:1px solid var(--color-border);flex-shrink:0;display:flex;align-items:center;justify-content:center;background:#f5f5f5;font-size:.6rem;text-align:center;color:var(--color-text-secondary)}
+    .doc-card-thumb img{width:100%;height:100%;object-fit:cover}
+    .file-preview{margin-top:8px;padding:12px;border:1px solid var(--color-border);border-radius:var(--radius);text-align:center}
+    .file-preview img{max-width:100%;max-height:200px;border-radius:var(--radius-sm)}
+    .file-preview-pdf{font-size:2rem;color:var(--color-text-secondary)}
+    .file-preview-name{font-size:.8rem;color:var(--color-text-secondary);margin-top:4px;word-break:break-all}
+  </style>
+</head>
+<body>
+
+  <!-- LIST VIEW -->
+  <div id="listView" class="page">
+    <div class="filter-bar">
+      <select class="form-select" id="filterProject"><option value="">Alle Projekte</option></select>
+      <select class="form-select" id="filterDocType"><option value="">Alle Typen</option></select>
+    </div>
+    <div id="docList"></div>
+    <button class="fab" id="btnNew" title="Neues Dokument">+</button>
+  </div>
+
+  <!-- FORM VIEW -->
+  <div id="formView" class="page" style="display:none;">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">
+      <button class="btn-back" id="btnBack" type="button">&#8592; Zurueck</button>
+      <h2 style="font-size:1.1rem;font-weight:600;" id="formTitle">Neues Dokument</h2>
+    </div>
+
+    <form id="docForm" novalidate>
+      <div class="card">
+        <div class="form-group">
+          <label class="form-label">Projekt <span class="required">*</span></label>
+          <select class="form-select" id="fProject" required><option value="">Bitte waehlen</option></select>
+          <div class="form-warning" id="wProject">Bitte Projekt waehlen</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Dokumenttyp <span class="required">*</span></label>
+          <select class="form-select" id="fDocType" required>
+            <option value="">Bitte waehlen</option>
+            <option>Belastungsversuch PDF</option>
+            <option>Bodengutachten</option>
+            <option>Lageplan</option>
+            <option>Statik/Lastangaben</option>
+            <option>Fundamentplan</option>
+            <option>Bauplaene</option>
+            <option>Richtpreisangebot</option>
+            <option>Foto</option>
+            <option>Sonstiges</option>
+          </select>
+          <div class="form-warning" id="wDocType">Bitte Dokumenttyp waehlen</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Datei hochladen <span class="required">*</span></label>
+          <div class="upload-buttons">
+            <button type="button" class="btn btn-secondary" id="btnCamera">&#128247; Kamera</button>
+            <button type="button" class="btn btn-secondary" id="btnGallery">&#128444; Galerie</button>
+            <button type="button" class="btn btn-secondary" id="btnFile">&#128196; Datei</button>
+            <button type="button" class="btn btn-secondary" id="btnDrive">&#9729; Drive</button>
+            <input type="file" id="inputCamera" accept="image/*" capture="environment">
+            <input type="file" id="inputGallery" accept="image/*">
+            <input type="file" id="inputFile" accept="*/*">
+          </div>
+          <div id="filePreview"></div>
+          <div class="form-warning" id="wFile">Bitte Datei hochladen</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Beschreibung</label>
+          <textarea class="form-textarea" id="fDescription" rows="2"></textarea>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Datum</label>
+          <input type="date" class="form-input" id="fDate">
+        </div>
+      </div>
+
+      <button type="submit" class="btn btn-primary btn-block">Speichern</button>
+      <button type="button" class="btn btn-danger btn-block mt-sm" id="btnDelete" style="display:none;">Loeschen</button>
+    </form>
+  </div>
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
+  <script src="shared.js"></script>
+  <script>
+    // --- Constants ---
+    var DOC_TYPES = [
+      'Belastungsversuch PDF','Bodengutachten','Lageplan','Statik/Lastangaben',
+      'Fundamentplan','Bauplaene','Richtpreisangebot','Foto','Sonstiges'
+    ];
+
+    // --- State ---
+    var currentId = null;
+    var fileData = null; // { dataUrl, name, type, size }
+    var uploadedUrl = null; // Firebase Storage download URL
+
+    // --- Init ---
+    initApp(function(user) {
+      renderNav('documents');
+      populateDropdowns();
+      setupUploads();
+
+      var editId = getUrlParam('id');
+      var isNew = getUrlParam('new');
+      if (editId) openForm(editId);
+      else if (isNew) openForm(null);
+      else showList();
+
+      if (isOnline) {
+        syncWithFirebase('documents').then(function() {
+          if (!currentId && !isNew) renderList();
+        });
+      }
+    });
+
+    function populateDropdowns() {
+      var projects = getActiveItems('projects');
+      var opts = projects.map(function(p) {
+        return '<option value="' + p.id + '">' + esc(p.name || 'Ohne Bezeichnung') + '</option>';
+      }).join('');
+      document.getElementById('fProject').innerHTML = '<option value="">Bitte waehlen</option>' + opts;
+      document.getElementById('filterProject').innerHTML = '<option value="">Alle Projekte</option>' + opts;
+
+      var typeOpts = DOC_TYPES.map(function(t) {
+        return '<option value="' + t + '">' + esc(t) + '</option>';
+      }).join('');
+      document.getElementById('filterDocType').innerHTML = '<option value="">Alle Typen</option>' + typeOpts;
+    }
+
+    // =============================================
+    //  LIST VIEW
+    // =============================================
+
+    function showList() {
+      document.getElementById('listView').style.display = '';
+      document.getElementById('formView').style.display = 'none';
+      currentId = null;
+      history.replaceState(null, '', 'documents.html');
+      renderList();
+    }
+
+    function renderList() {
+      var docs = getActiveItems('documents');
+      var projFilter = document.getElementById('filterProject').value;
+      var typeFilter = document.getElementById('filterDocType').value;
+
+      var filtered = docs.filter(function(d) {
+        if (projFilter && d.projectId !== projFilter) return false;
+        if (typeFilter && d.docType !== typeFilter) return false;
+        return true;
+      });
+
+      filtered.sort(function(a, b) { return (b.date || '').localeCompare(a.date || ''); });
+
+      var container = document.getElementById('docList');
+      if (filtered.length === 0) {
+        container.innerHTML = '<p class="list-empty">Keine Dokumente gefunden</p>';
+        return;
+      }
+
+      container.innerHTML = filtered.map(function(d) {
+        var proj = d.projectId ? getItemById('projects', d.projectId) : null;
+        var projName = proj ? proj.name : (d.projectName || '');
+        var isImage = d.fileType === 'image' && d.fileDataUrl;
+        var thumb;
+        if (isImage) {
+          thumb = '<div class="doc-card-thumb"><img src="' + d.fileDataUrl + '" alt=""></div>';
+        } else {
+          thumb = '<div class="doc-card-thumb">&#128196;<br>PDF</div>';
+        }
+
+        return '<div class="card card-clickable" data-id="' + d.id + '" style="display:flex;gap:12px;align-items:center;">' +
+          thumb +
+          '<div style="min-width:0;flex:1;">' +
+            '<div class="card-title" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(d.fileName || 'Dokument') + '</div>' +
+            '<div class="card-subtitle">' + esc(d.docType || '') +
+              (projName ? ' &middot; ' + esc(projName) : '') + '</div>' +
+            (d.date ? '<div class="card-subtitle">' + formatDate(d.date) + '</div>' : '') +
+          '</div>' +
+        '</div>';
+      }).join('');
+
+      container.querySelectorAll('[data-id]').forEach(function(card) {
+        card.addEventListener('click', function() {
+          openForm(card.getAttribute('data-id'));
+        });
+      });
+    }
+
+    document.getElementById('filterProject').addEventListener('change', renderList);
+    document.getElementById('filterDocType').addEventListener('change', renderList);
+    document.getElementById('btnNew').addEventListener('click', function() { openForm(null); });
+
+    // =============================================
+    //  FORM VIEW
+    // =============================================
+
+    function openForm(id) {
+      document.getElementById('listView').style.display = 'none';
+      document.getElementById('formView').style.display = '';
+      fileData = null;
+      uploadedUrl = null;
+      clearWarnings();
+
+      if (id) {
+        currentId = id;
+        var d = getItemById('documents', id);
+        if (!d) { showToast('Dokument nicht gefunden', 'error'); showList(); return; }
+        document.getElementById('formTitle').textContent = 'Dokument bearbeiten';
+        history.replaceState(null, '', 'documents.html?id=' + id);
+        fillForm(d);
+        document.getElementById('btnDelete').style.display = '';
+      } else {
+        currentId = null;
+        document.getElementById('formTitle').textContent = 'Neues Dokument';
+        history.replaceState(null, '', 'documents.html?new=1');
+        resetForm();
+        document.getElementById('btnDelete').style.display = 'none';
+      }
+      window.scrollTo(0, 0);
+    }
+
+    function fillForm(d) {
+      document.getElementById('fProject').value = d.projectId || '';
+      document.getElementById('fDocType').value = d.docType || '';
+      document.getElementById('fDescription').value = d.description || '';
+      document.getElementById('fDate').value = d.date || '';
+      uploadedUrl = d.downloadUrl || null;
+
+      // Restore file preview
+      if (d.fileDataUrl) {
+        fileData = { dataUrl: d.fileDataUrl, name: d.fileName, type: d.fileType, size: d.fileSize || 0 };
+        renderFilePreview();
+      } else if (d.downloadUrl) {
+        // File exists in Storage but no local preview
+        document.getElementById('filePreview').innerHTML =
+          '<div class="file-preview"><div class="file-preview-name">&#128279; ' + esc(d.fileName || 'Datei') + ' (in Cloud gespeichert)</div></div>';
+      } else {
+        document.getElementById('filePreview').innerHTML = '';
+      }
+    }
+
+    function resetForm() {
+      document.getElementById('docForm').reset();
+      fileData = null;
+      uploadedUrl = null;
+      document.getElementById('filePreview').innerHTML = '';
+    }
+
+    function clearWarnings() {
+      document.querySelectorAll('.form-warning').forEach(function(w) { w.classList.remove('visible'); });
+    }
+
+    // =============================================
+    //  FILE UPLOAD
+    // =============================================
+
+    function setupUploads() {
+      document.getElementById('btnCamera').addEventListener('click', function() {
+        document.getElementById('inputCamera').click();
+      });
+      document.getElementById('btnGallery').addEventListener('click', function() {
+        document.getElementById('inputGallery').click();
+      });
+      document.getElementById('btnFile').addEventListener('click', function() {
+        document.getElementById('inputFile').click();
+      });
+      document.getElementById('btnDrive').addEventListener('click', function() {
+        showToast('Google Drive Integration kommt in Phase 2', 'info');
+      });
+
+      ['inputCamera','inputGallery','inputFile'].forEach(function(inputId) {
+        document.getElementById(inputId).addEventListener('change', function(e) {
+          var file = e.target.files[0];
+          if (!file) return;
+
+          // Size check (5 MB)
+          if (file.size > 5 * 1024 * 1024) {
+            showToast('Datei zu gross (max. 5 MB)', 'error');
+            e.target.value = '';
+            return;
+          }
+
+          var isImage = file.type.startsWith('image/');
+          if (isImage) {
+            compressImage(file, 1920, 5).then(function(blob) {
+              blobToDataUrl(blob, file.name, 'image');
+            });
+          } else {
+            blobToDataUrl(file, file.name, 'file');
+          }
+          e.target.value = '';
+        });
+      });
+    }
+
+    function blobToDataUrl(blob, name, type) {
+      var reader = new FileReader();
+      reader.onload = function() {
+        fileData = { dataUrl: reader.result, name: name, type: type, size: blob.size };
+        uploadedUrl = null; // Reset — will upload on save
+        renderFilePreview();
+      };
+      reader.readAsDataURL(blob);
+    }
+
+    function renderFilePreview() {
+      var container = document.getElementById('filePreview');
+      if (!fileData) { container.innerHTML = ''; return; }
+
+      if (fileData.type === 'image') {
+        container.innerHTML = '<div class="file-preview">' +
+          '<img src="' + fileData.dataUrl + '" alt="Vorschau">' +
+          '<div class="file-preview-name">' + esc(fileData.name) + '</div></div>';
+      } else {
+        container.innerHTML = '<div class="file-preview">' +
+          '<div class="file-preview-pdf">&#128196;</div>' +
+          '<div class="file-preview-name">' + esc(fileData.name) + '</div></div>';
+      }
+    }
+
+    // =============================================
+    //  FIREBASE STORAGE UPLOAD
+    // =============================================
+
+    function uploadToStorage(projectId, docId, fileObj) {
+      if (!isOnline || !fileObj || !fileObj.dataUrl) return Promise.resolve(null);
+
+      var storageRef = storage.ref('files/' + projectId + '/' + docId);
+      // Convert dataUrl to blob for upload
+      var parts = fileObj.dataUrl.split(',');
+      var mime = parts[0].match(/:(.*?);/)[1];
+      var bstr = atob(parts[1]);
+      var arr = new Uint8Array(bstr.length);
+      for (var i = 0; i < bstr.length; i++) arr[i] = bstr.charCodeAt(i);
+      var blob = new Blob([arr], { type: mime });
+
+      return storageRef.put(blob).then(function(snapshot) {
+        return snapshot.ref.getDownloadURL();
+      }).then(function(url) {
+        console.log('[Docs] Uploaded to Storage, URL:', url);
+        return url;
+      }).catch(function(err) {
+        console.error('[Docs] Storage upload error:', err);
+        return null;
+      });
+    }
+
+    // =============================================
+    //  SAVE
+    // =============================================
+
+    document.getElementById('docForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      console.log('[Docs] Save triggered');
+
+      try {
+        clearWarnings();
+        var hasWarning = false;
+        function warn(id, cond) {
+          var el = document.getElementById(id);
+          if (el) el.classList.toggle('visible', cond);
+          if (cond) hasWarning = true;
+        }
+
+        var projectId = document.getElementById('fProject').value;
+        var docType = document.getElementById('fDocType').value;
+        var hasFile = !!fileData || !!uploadedUrl;
+
+        warn('wProject', !projectId);
+        warn('wDocType', !docType);
+        warn('wFile', !hasFile);
+
+        var proj = projectId ? getItemById('projects', projectId) : null;
+
+        var data = {
+          projectId: projectId,
+          projectName: proj ? proj.name : '',
+          docType: docType,
+          description: document.getElementById('fDescription').value.trim(),
+          date: document.getElementById('fDate').value,
+          fileName: fileData ? fileData.name : '',
+          fileType: fileData ? fileData.type : '',
+          fileSize: fileData ? fileData.size : 0,
+          fileDataUrl: fileData ? fileData.dataUrl : '',
+          downloadUrl: uploadedUrl || ''
+        };
+
+        var id = currentId || generateId();
+        console.log('[Docs] Saving id=' + id);
+
+        try {
+          saveToLocal('documents', id, data);
+        } catch (storageErr) {
+          console.error('[Docs] localStorage error:', storageErr);
+          // If quota exceeded, try saving without dataUrl
+          data.fileDataUrl = '';
+          try {
+            saveToLocal('documents', id, data);
+            showToast('Gespeichert (Datei nur in Cloud)', 'warning');
+          } catch (err2) {
+            showToast('Speicherfehler: ' + err2.message, 'error');
+            return;
+          }
+        }
+
+        showToast(hasWarning ? 'Gespeichert (fehlende Pflichtfelder)' : 'Dokument gespeichert', hasWarning ? 'warning' : 'success');
+
+        currentId = id;
+        history.replaceState(null, '', 'documents.html?id=' + id);
+        document.getElementById('formTitle').textContent = 'Dokument bearbeiten';
+        document.getElementById('btnDelete').style.display = '';
+
+        // Upload to Firebase Storage in background
+        if (isOnline && fileData && projectId && !uploadedUrl) {
+          uploadToStorage(projectId, id, fileData).then(function(url) {
+            if (url) {
+              uploadedUrl = url;
+              var item = getItemById('documents', id);
+              if (item) {
+                item.downloadUrl = url;
+                saveToLocal('documents', id, item);
+                console.log('[Docs] Download URL saved');
+              }
+            }
+          });
+        }
+
+      } catch (err) {
+        console.error('[Docs] Unexpected save error:', err);
+        showToast('Fehler: ' + err.message, 'error');
+      }
+    });
+
+    // =============================================
+    //  DELETE / BACK
+    // =============================================
+
+    document.getElementById('btnDelete').addEventListener('click', function() {
+      if (!currentId) return;
+      var d = getItemById('documents', currentId);
+      if (softDelete('documents', currentId, d ? (d.fileName || 'Dokument') : '')) {
+        showToast('Dokument geloescht', 'success');
+        showList();
+      }
+    });
+
+    document.getElementById('btnBack').addEventListener('click', function() { showList(); });
+
+    // =============================================
+    //  HELPERS
+    // =============================================
+
+    function esc(str) {
+      var d = document.createElement('div');
+      d.textContent = str || '';
+      return d.innerHTML;
+    }
+  </script>
+</body>
+</html>
