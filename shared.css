@@ -497,6 +497,10 @@ a {
   background: var(--color-error);
 }
 
+.toast.toast-warning {
+  background: #f57f17;
+}
+
 /* --- Online/Offline Indicator --- */
 .online-indicator {
   display: flex;

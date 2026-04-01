@@ -52,10 +52,12 @@
       <p class="list-empty">Noch keine Daten</p>
     </div>
 
-    <!-- Recent Projects -->
-    <div class="section-title">Letzte Projekte</div>
-    <div id="widgetProjects" class="card">
-      <p class="list-empty">Noch keine Daten</p>
+    <!-- Month Calendar -->
+    <div class="section-title">Monatsuebersicht</div>
+    <div id="widgetCalendar" class="card">
+      <div id="calMonth" style="font-weight:600;text-align:center;margin-bottom:8px;"></div>
+      <table id="calGrid" style="width:100%;border-collapse:collapse;font-size:0.8rem;text-align:center;"></table>
+      <div id="calDayDetail" style="margin-top:8px;"></div>
     </div>
 
     <!-- Open Reports -->
@@ -120,7 +122,7 @@
 
     function refreshWidgets() {
       renderTodayWidget();
-      renderProjectsWidget();
+      renderCalendarWidget();
       renderReportsWidget();
       renderDrivesWidget();
       renderCostsWidget();
@@ -131,50 +133,121 @@
       var today = new Date().toISOString().split('T')[0];
 
       var projects = getActiveItems('projects').filter(function(p) {
-        return p.date === today || p.executionDate === today;
-      });
-      var reports = getActiveItems('reports').filter(function(r) {
-        return r.date === today;
+        return p.executionDate === today;
       });
 
-      var items = [];
-      projects.forEach(function(p) {
-        items.push({ label: p.name || p.projectName || 'Projekt', type: 'Projekt', href: 'projects.html?id=' + p.id });
-      });
-      reports.forEach(function(r) {
-        items.push({ label: 'EB: ' + (r.projectName || 'Bericht'), type: 'Bericht', href: 'reports.html?id=' + r.id });
-      });
-
-      if (items.length === 0) {
+      if (projects.length === 0) {
         container.innerHTML = '<p class="list-empty">Keine Termine heute</p>';
         return;
       }
 
-      container.innerHTML = items.map(function(item) {
-        return '<a href="' + item.href + '" class="card-clickable" style="display:block;padding:8px 0;border-bottom:1px solid var(--color-border);">' +
-               '<strong>' + escapeHtml(item.label) + '</strong> <span class="text-secondary">(' + item.type + ')</span></a>';
+      container.innerHTML = projects.map(function(p) {
+        var status = p.status || 'aktiv';
+        var badgeClass = status === 'abgeschlossen' ? 'badge-abgeschlossen' : 'badge-aktiv';
+        return '<a href="projects.html?id=' + p.id + '" class="card-clickable" style="display:block;padding:8px 0;border-bottom:1px solid var(--color-border);">' +
+               '<strong>' + escapeHtml(p.name || 'Projekt') + '</strong>' +
+               (p.executionTime ? ' <span class="text-secondary">' + p.executionTime.substring(0,5) + '</span>' : '') +
+               ' <span class="badge ' + badgeClass + '">' + status + '</span></a>';
       }).join('');
     }
 
-    function renderProjectsWidget() {
-      var container = document.getElementById('widgetProjects');
-      var projects = getActiveItems('projects')
-        .filter(function(p) { return p.status !== 'abgeschlossen'; })
-        .slice(0, 5);
+    function renderCalendarWidget() {
+      var now = new Date();
+      var year = now.getFullYear();
+      var month = now.getMonth();
+      var monthNames = ['Januar','Februar','Maerz','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
 
-      if (projects.length === 0) {
-        container.innerHTML = '<p class="list-empty">Keine aktiven Projekte</p>';
-        return;
+      document.getElementById('calMonth').textContent = monthNames[month] + ' ' + year;
+
+      // Get projects with dates in this month
+      var projects = getActiveItems('projects');
+      var dateMap = {}; // 'YYYY-MM-DD' -> [projects]
+      projects.forEach(function(p) {
+        if (!p.executionDate) return;
+        var d = new Date(p.executionDate);
+        if (d.getFullYear() === year && d.getMonth() === month) {
+          if (!dateMap[p.executionDate]) dateMap[p.executionDate] = [];
+          dateMap[p.executionDate].push(p);
+        }
+      });
+
+      // Build calendar grid
+      var firstDay = new Date(year, month, 1).getDay(); // 0=Sun
+      var daysInMonth = new Date(year, month + 1, 0).getDate();
+      var todayStr = now.toISOString().split('T')[0];
+
+      // Start on Monday (adjust firstDay: 0=Sun -> 6, 1=Mon -> 0, etc.)
+      var startOffset = (firstDay + 6) % 7;
+
+      var html = '<thead><tr>';
+      ['Mo','Di','Mi','Do','Fr','Sa','So'].forEach(function(d) {
+        html += '<th style="padding:4px;color:var(--color-text-secondary);font-weight:500;font-size:0.75rem;">' + d + '</th>';
+      });
+      html += '</tr></thead><tbody><tr>';
+
+      // Empty cells before first day
+      for (var e = 0; e < startOffset; e++) {
+        html += '<td style="padding:4px;"></td>';
       }
 
-      container.innerHTML = projects.map(function(p) {
-        var name = p.name || p.projectName || 'Ohne Bezeichnung';
-        var client = p.client || p.auftraggeber || '';
-        return '<a href="projects.html?id=' + p.id + '" class="card-clickable" style="display:block;padding:8px 0;border-bottom:1px solid var(--color-border);">' +
-               '<strong>' + escapeHtml(name) + '</strong>' +
-               (client ? '<br><span class="text-secondary">' + escapeHtml(client) + '</span>' : '') +
-               '</a>';
-      }).join('');
+      for (var day = 1; day <= daysInMonth; day++) {
+        var dateStr = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+        var hasProjects = dateMap[dateStr];
+        var isToday = dateStr === todayStr;
+
+        var bg = 'transparent';
+        var cursor = 'default';
+        if (hasProjects) {
+          var allDone = hasProjects.every(function(p) { return p.status === 'abgeschlossen'; });
+          bg = allDone ? '#c8e6c9' : '#e0e0e0';
+          cursor = 'pointer';
+        }
+
+        var todayBorder = isToday ? 'border:2px solid var(--color-primary);' : '';
+
+        html += '<td style="padding:2px;">' +
+          '<div data-cal-date="' + dateStr + '" style="width:32px;height:32px;margin:auto;display:flex;align-items:center;justify-content:center;' +
+          'border-radius:50%;background:' + bg + ';cursor:' + cursor + ';font-size:0.8rem;' + todayBorder + '">' +
+          day + '</div></td>';
+
+        if ((startOffset + day) % 7 === 0 && day < daysInMonth) {
+          html += '</tr><tr>';
+        }
+      }
+
+      // Fill remaining cells
+      var remaining = (startOffset + daysInMonth) % 7;
+      if (remaining > 0) {
+        for (var r = remaining; r < 7; r++) {
+          html += '<td style="padding:4px;"></td>';
+        }
+      }
+      html += '</tr></tbody>';
+
+      document.getElementById('calGrid').innerHTML = html;
+
+      // Click on days with projects
+      document.getElementById('calGrid').querySelectorAll('[data-cal-date]').forEach(function(cell) {
+        cell.addEventListener('click', function() {
+          var d = cell.getAttribute('data-cal-date');
+          if (dateMap[d]) showCalDayDetail(d, dateMap[d]);
+        });
+      });
+
+      document.getElementById('calDayDetail').innerHTML = '';
+    }
+
+    function showCalDayDetail(dateStr, projects) {
+      var detail = document.getElementById('calDayDetail');
+      detail.innerHTML = '<div style="font-weight:600;font-size:0.85rem;margin-bottom:4px;">' + formatDate(dateStr) + ':</div>' +
+        projects.map(function(p) {
+          var status = p.status || 'aktiv';
+          var badgeClass = status === 'abgeschlossen' ? 'badge-abgeschlossen' : 'badge-aktiv';
+          return '<a href="projects.html?id=' + p.id + '" style="display:block;padding:4px 0;font-size:0.85rem;">' +
+            escapeHtml(p.name || 'Projekt') +
+            (p.executionTime ? ' ' + p.executionTime.substring(0,5) : '') +
+            ' <span class="badge ' + badgeClass + '">' + status + '</span></a>';
+        }).join('');
     }
 
     function renderReportsWidget() {

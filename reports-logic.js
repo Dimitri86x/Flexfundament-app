@@ -2,12 +2,6 @@
 //  Einsatzberichte – Logic
 // =============================================
 
-var OBSTACLE_REASONS = [
-  'Wetter','Fehlende Unterlagen','Fehlende Freigabe','Fehlende Absteckung',
-  'Fehlender Hoehenbezugspunkt','Baustelle nicht zugaenglich','Material fehlt',
-  'Maschine fehlt/defekt','Kunde nicht vorbereitet','Hindernis im Baufeld','Sonstiges'
-];
-
 // State
 var currentId = null;
 var workers = [];
@@ -86,7 +80,7 @@ function renderList() {
     var status = r.status || 'entwurf';
     var badgeClass = status === 'abgeschlossen' ? 'badge-abgeschlossen' : 'badge-entwurf';
     var proj = r.projectId ? getItemById('projects', r.projectId) : null;
-    var projName = proj ? proj.name : 'Kein Projekt';
+    var projName = proj ? proj.name : (r.projectName || 'Kein Projekt');
     var workerStr = (r.workers || []).join(', ');
 
     return '<div class="card card-clickable" data-id="' + r.id + '">' +
@@ -151,7 +145,7 @@ function fillForm(r) {
   document.getElementById('fTimeStart').value = r.timeStart || '';
   document.getElementById('fTimeEnd').value = r.timeEnd || '';
 
-  workers = r.workers || [];
+  workers = (r.workers || []).slice();
   renderTags();
 
   // Activities
@@ -172,15 +166,17 @@ function fillForm(r) {
   document.getElementById('obstacleFields').style.display = r.obstacle ? '' : 'none';
   document.getElementById('fObstacleReason').value = r.obstacleReason || '';
   document.getElementById('fObstacleDesc').value = r.obstacleDesc || '';
-  obstaclePhotos = r.obstaclePhotos || [];
-  renderFileGrid('obstaclePhotoGrid', obstaclePhotos, function(arr) { obstaclePhotos = arr; });
+  obstaclePhotos = (r.obstaclePhotos || []).slice();
+  renderObstacleGrid();
 
   // Notes
   document.getElementById('fNotes').value = r.notes || '';
   document.getElementById('fClientNotes').value = r.clientNotes || '';
 
   // Photos
-  reportPhotos = r.photos || [];
+  reportPhotos = (r.photos || []).map(function(p) {
+    return { dataUrl: p.dataUrl, name: p.name, type: p.type, description: p.description || '' };
+  });
   renderPhotosList();
 }
 
@@ -190,13 +186,12 @@ function resetForm() {
   obstaclePhotos = [];
   reportPhotos = [];
   renderTags();
-  renderFileGrid('obstaclePhotoGrid', obstaclePhotos, function(arr) { obstaclePhotos = arr; });
+  renderObstacleGrid();
   renderPhotosList();
   document.getElementById('obstacleFields').style.display = 'none';
   ['actPullCount','actScrewCount','actMontageCount'].forEach(function(id) {
     document.getElementById(id).style.display = 'none';
   });
-  // Pre-select project from URL if coming from projects page
   var projId = getUrlParam('projectId');
   if (projId) document.getElementById('fProject').value = projId;
 }
@@ -268,9 +263,7 @@ function addWorker(name) {
 function renderTags() {
   var container = document.getElementById('tagsContainer');
   var input = document.getElementById('fWorkerInput');
-  // Remove old tags
   container.querySelectorAll('.tag').forEach(function(t) { t.remove(); });
-  // Add new tags before input
   workers.forEach(function(w, i) {
     var tag = document.createElement('span');
     tag.className = 'tag';
@@ -321,7 +314,6 @@ function setupObstacleToggle() {
 // =============================================
 
 function setupAllUploads() {
-  // Generic: wire all .btn-upload to their data-target
   document.querySelectorAll('.btn-upload').forEach(function(btn) {
     btn.addEventListener('click', function() {
       document.getElementById(btn.getAttribute('data-target')).click();
@@ -333,7 +325,7 @@ function setupAllUploads() {
     document.getElementById(id).addEventListener('change', function(e) {
       handleFiles(e, function(file) {
         obstaclePhotos.push(file);
-        renderFileGrid('obstaclePhotoGrid', obstaclePhotos, function(arr) { obstaclePhotos = arr; });
+        renderObstacleGrid();
       });
     });
   });
@@ -369,10 +361,10 @@ function handleFiles(e, onEach) {
   e.target.value = '';
 }
 
-function renderFileGrid(gridId, arr, setter) {
-  var grid = document.getElementById(gridId);
-  if (arr.length === 0) { grid.innerHTML = ''; return; }
-  grid.innerHTML = arr.map(function(f, i) {
+function renderObstacleGrid() {
+  var grid = document.getElementById('obstaclePhotoGrid');
+  if (obstaclePhotos.length === 0) { grid.innerHTML = ''; return; }
+  grid.innerHTML = obstaclePhotos.map(function(f, i) {
     var inner = f.type === 'pdf'
       ? '<div class="photo-thumb-pdf">&#128196;<br>' + esc(f.name) + '</div>'
       : '<img src="' + f.dataUrl + '" alt="Foto">';
@@ -381,14 +373,12 @@ function renderFileGrid(gridId, arr, setter) {
   }).join('');
   grid.querySelectorAll('.photo-remove').forEach(function(btn) {
     btn.addEventListener('click', function() {
-      arr.splice(parseInt(btn.getAttribute('data-i')), 1);
-      setter(arr);
-      renderFileGrid(gridId, arr, setter);
+      obstaclePhotos.splice(parseInt(btn.getAttribute('data-i')), 1);
+      renderObstacleGrid();
     });
   });
 }
 
-// Photos with description fields
 function renderPhotosList() {
   var container = document.getElementById('photosList');
   if (reportPhotos.length === 0) { container.innerHTML = ''; return; }
@@ -396,7 +386,7 @@ function renderPhotosList() {
   container.innerHTML = reportPhotos.map(function(p, i) {
     var preview = p.type === 'pdf'
       ? '<div class="photo-thumb-pdf">&#128196; ' + esc(p.name) + '</div>'
-      : '<img src="' + p.dataUrl + '" alt="Foto">';
+      : '<img src="' + p.dataUrl + '" alt="Foto" style="max-width:100%;max-height:200px;border-radius:4px;">';
     return '<div class="photo-item">' + preview +
       '<input type="text" class="form-input mt-sm" placeholder="Beschreibung..." value="' + esc(p.description || '') + '" data-photo-i="' + i + '">' +
       '<button type="button" class="btn btn-danger mt-sm" data-rm-photo="' + i + '" style="font-size:.8rem;padding:4px 8px;">Entfernen</button>' +
@@ -422,70 +412,91 @@ function renderPhotosList() {
 
 document.getElementById('reportForm').addEventListener('submit', function(e) {
   e.preventDefault();
-  clearWarnings();
+  console.log('[Reports] Save triggered');
 
-  var data = {
-    projectId: document.getElementById('fProject').value,
-    date: document.getElementById('fDate').value,
-    workers: workers.slice(),
-    status: document.getElementById('fStatus').value,
-    timeStart: document.getElementById('fTimeStart').value,
-    timeEnd: document.getElementById('fTimeEnd').value,
-    actPull: document.getElementById('actPull').checked,
-    actPullCount: document.getElementById('actPullCount').value,
-    actScrew: document.getElementById('actScrew').checked,
-    actScrewCount: document.getElementById('actScrewCount').value,
-    actMontage: document.getElementById('actMontage').checked,
-    actMontageCount: document.getElementById('actMontageCount').value,
-    actSurvey: document.getElementById('actSurvey').checked,
-    actExtra: document.getElementById('actExtra').value.trim(),
-    obstacle: document.getElementById('fObstacle').checked,
-    obstacleReason: document.getElementById('fObstacleReason').value,
-    obstacleDesc: document.getElementById('fObstacleDesc').value.trim(),
-    obstaclePhotos: obstaclePhotos,
-    notes: document.getElementById('fNotes').value.trim(),
-    clientNotes: document.getElementById('fClientNotes').value.trim(),
-    photos: reportPhotos
-  };
+  try {
+    clearWarnings();
 
-  // Store project name for dashboard display
-  var proj = data.projectId ? getItemById('projects', data.projectId) : null;
-  data.projectName = proj ? proj.name : '';
+    var data = {
+      projectId: document.getElementById('fProject').value,
+      date: document.getElementById('fDate').value,
+      workers: workers.slice(),
+      status: document.getElementById('fStatus').value,
+      timeStart: document.getElementById('fTimeStart').value,
+      timeEnd: document.getElementById('fTimeEnd').value,
+      actPull: document.getElementById('actPull').checked,
+      actPullCount: document.getElementById('actPullCount').value,
+      actScrew: document.getElementById('actScrew').checked,
+      actScrewCount: document.getElementById('actScrewCount').value,
+      actMontage: document.getElementById('actMontage').checked,
+      actMontageCount: document.getElementById('actMontageCount').value,
+      actSurvey: document.getElementById('actSurvey').checked,
+      actExtra: document.getElementById('actExtra').value.trim(),
+      obstacle: document.getElementById('fObstacle').checked,
+      obstacleReason: document.getElementById('fObstacleReason').value,
+      obstacleDesc: document.getElementById('fObstacleDesc').value.trim(),
+      obstaclePhotos: obstaclePhotos,
+      notes: document.getElementById('fNotes').value.trim(),
+      clientNotes: document.getElementById('fClientNotes').value.trim(),
+      photos: reportPhotos
+    };
 
-  // Validate (warnings only)
-  var hasWarning = false;
-  function warn(id, cond) { document.getElementById(id).classList.toggle('visible', cond); if (cond) hasWarning = true; }
+    // Store project name for display
+    var proj = data.projectId ? getItemById('projects', data.projectId) : null;
+    data.projectName = proj ? proj.name : '';
 
-  warn('wProject', !data.projectId);
-  warn('wDate', !data.date);
-  warn('wWorkers', workers.length === 0);
-  warn('wTimeStart', !data.timeStart);
-  warn('wTimeEnd', !data.timeEnd);
-  warn('wNotes', !data.notes);
+    console.log('[Reports] Data collected, projectId=' + data.projectId);
 
-  // Time validation
-  if (data.timeStart && data.timeEnd && data.timeEnd <= data.timeStart) {
-    document.getElementById('eTimeEnd').classList.add('visible');
-    hasWarning = true;
+    // Validate (warnings only, never block save)
+    var hasWarning = false;
+    function warn(id, cond) {
+      var el = document.getElementById(id);
+      if (el) el.classList.toggle('visible', cond);
+      if (cond) hasWarning = true;
+    }
+
+    warn('wProject', !data.projectId);
+    warn('wDate', !data.date);
+    warn('wWorkers', workers.length === 0);
+    warn('wTimeStart', !data.timeStart);
+    warn('wTimeEnd', !data.timeEnd);
+    warn('wNotes', !data.notes);
+
+    if (data.timeStart && data.timeEnd && data.timeEnd <= data.timeStart) {
+      var eEl = document.getElementById('eTimeEnd');
+      if (eEl) eEl.classList.add('visible');
+      hasWarning = true;
+    }
+
+    var hasActivity = data.actPull || data.actScrew || data.actMontage || data.actSurvey || data.actExtra;
+    warn('wActivity', !hasActivity);
+
+    if (data.obstacle) warn('wObstacleDesc', !data.obstacleDesc);
+
+    // Save
+    var id = currentId || generateId();
+    console.log('[Reports] Saving id=' + id);
+
+    try {
+      saveToLocal('reports', id, data);
+    } catch (storageErr) {
+      console.error('[Reports] localStorage error:', storageErr);
+      showToast('Speicherfehler: ' + storageErr.message, 'error');
+      return;
+    }
+
+    console.log('[Reports] Saved successfully');
+    showToast(hasWarning ? 'Gespeichert (fehlende Pflichtfelder)' : 'Einsatzbericht gespeichert', hasWarning ? 'warning' : 'success');
+
+    currentId = id;
+    history.replaceState(null, '', 'reports.html?id=' + id);
+    document.getElementById('formTitle').textContent = 'Einsatzbericht bearbeiten';
+    document.getElementById('btnDelete').style.display = '';
+    document.getElementById('btnPdf').style.display = '';
+  } catch (err) {
+    console.error('[Reports] Unexpected save error:', err);
+    showToast('Fehler beim Speichern: ' + err.message, 'error');
   }
-
-  // Activity check
-  var hasActivity = data.actPull || data.actScrew || data.actMontage || data.actSurvey || data.actExtra;
-  warn('wActivity', !hasActivity);
-
-  // Obstacle description required if obstacle checked
-  if (data.obstacle) warn('wObstacleDesc', !data.obstacleDesc);
-
-  var id = currentId || generateId();
-  saveToLocal('reports', id, data);
-
-  showToast(hasWarning ? 'Gespeichert (fehlende Pflichtfelder)' : 'Einsatzbericht gespeichert', hasWarning ? 'warning' : 'success');
-
-  currentId = id;
-  history.replaceState(null, '', 'reports.html?id=' + id);
-  document.getElementById('formTitle').textContent = 'Einsatzbericht bearbeiten';
-  document.getElementById('btnDelete').style.display = '';
-  document.getElementById('btnPdf').style.display = '';
 });
 
 // =============================================
@@ -508,131 +519,168 @@ document.getElementById('btnBack').addEventListener('click', function() { showLi
 // =============================================
 
 document.getElementById('btnPdf').addEventListener('click', function() {
-  if (!currentId) return;
+  console.log('[PDF] Export triggered, currentId=' + currentId);
+
+  if (!currentId) {
+    showToast('Bitte zuerst speichern', 'error');
+    return;
+  }
+
+  // Check jsPDF availability
+  var jsPDFClass = null;
+  if (window.jspdf && window.jspdf.jsPDF) {
+    jsPDFClass = window.jspdf.jsPDF;
+    console.log('[PDF] jsPDF found via window.jspdf.jsPDF');
+  } else if (window.jsPDF) {
+    jsPDFClass = window.jsPDF;
+    console.log('[PDF] jsPDF found via window.jsPDF');
+  } else {
+    console.error('[PDF] jsPDF not available. window.jspdf=', window.jspdf, 'window.jsPDF=', window.jsPDF);
+    showToast('PDF-Bibliothek nicht geladen. Bitte Seite neu laden.', 'error');
+    return;
+  }
+
   var r = getItemById('reports', currentId);
-  if (!r) return;
-
-  var jsPDF = window.jspdf.jsPDF;
-  var doc = new jsPDF({ unit: 'mm', format: 'a4' });
-  var y = 20;
-  var lm = 15; // left margin
-  var pw = 180; // page width usable
-  var lh = 7; // line height
-
-  function checkPage(needed) {
-    if (y + needed > 275) { doc.addPage(); y = 20; }
+  if (!r) {
+    showToast('Bericht nicht gefunden', 'error');
+    return;
   }
 
-  function heading(text) {
-    checkPage(12);
-    doc.setFontSize(12);
+  try {
+    console.log('[PDF] Creating document...');
+    var doc = new jsPDFClass({ unit: 'mm', format: 'a4' });
+    var y = 20;
+    var lm = 15;
+    var pw = 180;
+    var lh = 7;
+
+    function checkPage(needed) {
+      if (y + needed > 275) { doc.addPage(); y = 20; }
+    }
+
+    function heading(text) {
+      checkPage(14);
+      doc.setFontSize(12);
+      doc.setFont(undefined, 'bold');
+      doc.text(text, lm, y);
+      y += 9;
+      doc.setFont(undefined, 'normal');
+      doc.setFontSize(10);
+    }
+
+    function line(label, value) {
+      if (!value && value !== 0) return;
+      checkPage(lh);
+      doc.setFont(undefined, 'bold');
+      var labelStr = label + ': ';
+      doc.text(labelStr, lm, y);
+      var labelW = doc.getTextWidth(labelStr);
+      doc.setFont(undefined, 'normal');
+      var lines = doc.splitTextToSize(String(value), pw - labelW);
+      doc.text(lines, lm + labelW, y);
+      y += lh * Math.max(1, lines.length);
+    }
+
+    function multiline(value) {
+      if (!value) return;
+      checkPage(lh);
+      doc.setFont(undefined, 'normal');
+      var lines = doc.splitTextToSize(String(value), pw);
+      checkPage(lh * lines.length);
+      doc.text(lines, lm, y);
+      y += lh * lines.length + 2;
+    }
+
+    // Title
+    doc.setFontSize(16);
     doc.setFont(undefined, 'bold');
-    doc.text(text, lm, y);
-    y += 8;
-    doc.setFont(undefined, 'normal');
+    doc.text('Einsatzbericht', lm, y);
+    y += 12;
     doc.setFontSize(10);
-  }
-
-  function line(label, value) {
-    if (!value) return;
-    checkPage(lh);
-    doc.setFont(undefined, 'bold');
-    doc.text(label + ': ', lm, y);
-    var labelW = doc.getTextWidth(label + ': ');
     doc.setFont(undefined, 'normal');
-    var lines = doc.splitTextToSize(String(value), pw - labelW);
-    doc.text(lines, lm + labelW, y);
-    y += lh * lines.length;
-  }
 
-  function multiline(label, value) {
-    if (!value) return;
-    checkPage(lh + 4);
-    doc.setFont(undefined, 'bold');
-    doc.text(label + ':', lm, y);
-    y += lh;
-    doc.setFont(undefined, 'normal');
-    var lines = doc.splitTextToSize(String(value), pw);
-    checkPage(lh * lines.length);
-    doc.text(lines, lm, y);
-    y += lh * lines.length + 2;
-  }
+    // Project
+    var proj = r.projectId ? getItemById('projects', r.projectId) : null;
+    heading('Projektdaten');
+    line('Projekt', proj ? proj.name : (r.projectName || '-'));
+    if (proj) {
+      var addr = [proj.street, proj.zip, proj.city].filter(Boolean).join(', ');
+      if (addr) line('Adresse', addr);
+    }
+    line('Datum', r.date ? formatDate(r.date) : '-');
+    line('Mitarbeiter', (r.workers || []).join(', ') || '-');
+    line('Status', r.status || 'entwurf');
 
-  // Title
-  doc.setFontSize(16);
-  doc.setFont(undefined, 'bold');
-  doc.text('Einsatzbericht', lm, y);
-  y += 12;
-  doc.setFontSize(10);
-  doc.setFont(undefined, 'normal');
+    // Time
+    heading('Zeiterfassung');
+    line('Beginn', r.timeStart || '-');
+    line('Ende', r.timeEnd || '-');
 
-  // Project info
-  var proj = r.projectId ? getItemById('projects', r.projectId) : null;
-  heading('Projektdaten');
-  line('Projekt', proj ? proj.name : r.projectName || '-');
-  if (proj) {
-    var addr = [proj.street, proj.zip, proj.city].filter(Boolean).join(', ');
-    if (addr) line('Adresse', addr);
-  }
-  line('Datum', r.date ? formatDate(r.date) : '-');
-  line('Mitarbeiter', (r.workers || []).join(', '));
-  line('Status', r.status || 'entwurf');
+    // Activities
+    heading('Taetigkeiten');
+    if (r.actPull) line('Auszugversuch', r.actPullCount || 'Ja');
+    if (r.actScrew) line('Eindrehversuch', r.actScrewCount || 'Ja');
+    if (r.actMontage) line('Montage', r.actMontageCount || 'Ja');
+    if (r.actSurvey) line('Einmessen', 'Ja');
+    if (r.actExtra) line('Zusatzleistung', r.actExtra);
+    if (!r.actPull && !r.actScrew && !r.actMontage && !r.actSurvey && !r.actExtra) {
+      multiline('Keine Taetigkeiten angegeben');
+    }
 
-  // Time
-  heading('Zeiterfassung');
-  line('Beginn', r.timeStart || '-');
-  line('Ende', r.timeEnd || '-');
-
-  // Activities
-  heading('Taetigkeiten');
-  if (r.actPull) line('Auszugversuch', r.actPullCount || 'Ja');
-  if (r.actScrew) line('Eindrehversuch', r.actScrewCount || 'Ja');
-  if (r.actMontage) line('Montage', r.actMontageCount || 'Ja');
-  if (r.actSurvey) line('Einmessen', 'Ja');
-  if (r.actExtra) line('Zusatzleistung', r.actExtra);
-
-  // Obstacle
-  if (r.obstacle) {
-    heading('Bauverhinderung');
-    line('Grund', r.obstacleReason || '-');
-    multiline('Beschreibung', r.obstacleDesc);
-  }
-
-  // Notes
-  heading('Notizen / Baufortschritt');
-  multiline('', r.notes);
-
-  if (r.clientNotes) {
-    heading('Gespraechsnotizen mit AG');
-    multiline('', r.clientNotes);
-  }
-
-  // Photos — add as images (only image type, skip PDFs)
-  var imagePhotos = (r.photos || []).filter(function(p) { return p.type === 'image' && p.dataUrl; });
-  if (imagePhotos.length > 0) {
-    heading('Fotos');
-    imagePhotos.forEach(function(p) {
-      checkPage(70);
-      try {
-        doc.addImage(p.dataUrl, 'JPEG', lm, y, 80, 60);
-        y += 62;
-        if (p.description) {
-          checkPage(lh);
-          doc.setFontSize(9);
-          doc.text(p.description, lm, y);
-          doc.setFontSize(10);
-          y += lh;
-        }
-      } catch (e) {
-        // Skip unloadable images
+    // Obstacle
+    if (r.obstacle) {
+      heading('Bauverhinderung');
+      line('Grund', r.obstacleReason || '-');
+      if (r.obstacleDesc) {
+        line('Beschreibung', '');
+        multiline(r.obstacleDesc);
       }
-    });
-  }
+    }
 
-  // Download
-  var filename = 'Einsatzbericht_' + (r.date || 'ohne-datum') + '.pdf';
-  doc.save(filename);
-  showToast('PDF erstellt', 'success');
+    // Notes
+    if (r.notes) {
+      heading('Notizen / Baufortschritt');
+      multiline(r.notes);
+    }
+
+    if (r.clientNotes) {
+      heading('Gespraechsnotizen mit AG');
+      multiline(r.clientNotes);
+    }
+
+    // Photos
+    var imagePhotos = (r.photos || []).filter(function(p) { return p.type === 'image' && p.dataUrl; });
+    if (imagePhotos.length > 0) {
+      heading('Fotos');
+      imagePhotos.forEach(function(p, idx) {
+        try {
+          checkPage(70);
+          doc.addImage(p.dataUrl, 'JPEG', lm, y, 80, 60);
+          y += 62;
+          if (p.description) {
+            checkPage(lh);
+            doc.setFontSize(9);
+            doc.text(p.description, lm, y);
+            doc.setFontSize(10);
+            y += lh;
+          }
+          y += 4;
+        } catch (imgErr) {
+          console.warn('[PDF] Foto ' + idx + ' konnte nicht eingefuegt werden:', imgErr);
+        }
+      });
+    }
+
+    // Save PDF
+    var filename = 'Einsatzbericht_' + (r.date || 'ohne-datum') + '.pdf';
+    console.log('[PDF] Saving as ' + filename);
+    doc.save(filename);
+    showToast('PDF erstellt: ' + filename, 'success');
+
+  } catch (pdfErr) {
+    console.error('[PDF] Error creating PDF:', pdfErr);
+    showToast('PDF-Fehler: ' + pdfErr.message, 'error');
+  }
 });
 
 // =============================================
