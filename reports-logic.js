@@ -7,6 +7,8 @@ var currentId = null;
 var workers = [];
 var obstaclePhotos = [];
 var reportPhotos = []; // { dataUrl, name, type, description }
+var gpsLat = null;
+var gpsLng = null;
 
 // --- Init ---
 initApp(function(user) {
@@ -16,6 +18,7 @@ initApp(function(user) {
   setupActivityToggles();
   setupObstacleToggle();
   setupAllUploads();
+  setupGps();
   populateProjectDropdowns();
 
   var editId = getUrlParam('id');
@@ -116,6 +119,8 @@ function openForm(id) {
   workers = [];
   obstaclePhotos = [];
   reportPhotos = [];
+  gpsLat = null;
+  gpsLng = null;
   clearWarnings();
 
   if (id) {
@@ -178,6 +183,11 @@ function fillForm(r) {
     return { dataUrl: p.dataUrl, name: p.name, type: p.type, description: p.description || '' };
   });
   renderPhotosList();
+
+  // GPS
+  gpsLat = r.latitude || null;
+  gpsLng = r.longitude || null;
+  updateGpsUI();
 }
 
 function resetForm() {
@@ -194,6 +204,9 @@ function resetForm() {
   });
   var projId = getUrlParam('projectId');
   if (projId) document.getElementById('fProject').value = projId;
+  gpsLat = null;
+  gpsLng = null;
+  updateGpsUI();
 }
 
 function clearWarnings() {
@@ -438,7 +451,9 @@ document.getElementById('reportForm').addEventListener('submit', function(e) {
       obstaclePhotos: obstaclePhotos,
       notes: document.getElementById('fNotes').value.trim(),
       clientNotes: document.getElementById('fClientNotes').value.trim(),
-      photos: reportPhotos
+      photos: reportPhotos,
+      latitude: gpsLat || '',
+      longitude: gpsLng || ''
     };
 
     // Store project name for display
@@ -493,6 +508,17 @@ document.getElementById('reportForm').addEventListener('submit', function(e) {
     document.getElementById('formTitle').textContent = 'Einsatzbericht bearbeiten';
     document.getElementById('btnDelete').style.display = '';
     document.getElementById('btnPdf').style.display = '';
+
+    // Auto-transfer GPS to project if project has no coordinates
+    if (gpsLat && gpsLng && data.projectId) {
+      var proj = getItemById('projects', data.projectId);
+      if (proj && !proj.lat && !proj.lng) {
+        proj.lat = String(gpsLat);
+        proj.lng = String(gpsLng);
+        saveToLocal('projects', data.projectId, proj);
+        showToast('Koordinaten wurden ins Projekt uebernommen', 'success');
+      }
+    }
   } catch (err) {
     console.error('[Reports] Unexpected save error:', err);
     showToast('Fehler beim Speichern: ' + err.message, 'error');
@@ -682,6 +708,53 @@ document.getElementById('btnPdf').addEventListener('click', function() {
     showToast('PDF-Fehler: ' + pdfErr.message, 'error');
   }
 });
+
+// =============================================
+//  GPS
+// =============================================
+
+function setupGps() {
+  document.getElementById('btnGps').addEventListener('click', function() {
+    if (!navigator.geolocation) {
+      showToast('GPS wird von diesem Geraet nicht unterstuetzt', 'error');
+      return;
+    }
+    var btn = document.getElementById('btnGps');
+    btn.disabled = true;
+    btn.textContent = 'Standort wird ermittelt...';
+
+    navigator.geolocation.getCurrentPosition(function(pos) {
+      gpsLat = parseFloat(pos.coords.latitude.toFixed(6));
+      gpsLng = parseFloat(pos.coords.longitude.toFixed(6));
+      updateGpsUI();
+      btn.disabled = false;
+      showToast('Standort erfasst', 'success');
+    }, function(err) {
+      console.error('[GPS] Error:', err);
+      btn.disabled = false;
+      btn.textContent = '\uD83D\uDCCD Standort erfassen';
+      var msg = 'Standortermittlung fehlgeschlagen';
+      if (err.code === 1) msg = 'Standortzugriff verweigert. Bitte in den Einstellungen erlauben.';
+      if (err.code === 2) msg = 'Standort nicht verfuegbar';
+      if (err.code === 3) msg = 'Zeitueberschreitung bei Standortermittlung';
+      showToast(msg, 'error');
+    }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+  });
+}
+
+function updateGpsUI() {
+  var result = document.getElementById('gpsResult');
+  var btn = document.getElementById('btnGps');
+  if (gpsLat && gpsLng) {
+    result.style.display = '';
+    document.getElementById('gpsCoords').textContent = gpsLat + ', ' + gpsLng;
+    document.getElementById('gpsMapLink').href = 'https://www.google.com/maps?q=' + gpsLat + ',' + gpsLng;
+    btn.textContent = '\uD83D\uDCCD Standort aktualisieren';
+  } else {
+    result.style.display = 'none';
+    btn.textContent = '\uD83D\uDCCD Standort erfassen';
+  }
+}
 
 // =============================================
 //  HELPERS

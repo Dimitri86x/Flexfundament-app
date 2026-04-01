@@ -14,10 +14,15 @@
     .upload-buttons input[type="file"]{display:none}
     .doc-card-thumb{width:48px;height:48px;border-radius:var(--radius-sm);overflow:hidden;border:1px solid var(--color-border);flex-shrink:0;display:flex;align-items:center;justify-content:center;background:#f5f5f5;font-size:.6rem;text-align:center;color:var(--color-text-secondary)}
     .doc-card-thumb img{width:100%;height:100%;object-fit:cover}
-    .file-preview{margin-top:8px;padding:12px;border:1px solid var(--color-border);border-radius:var(--radius);text-align:center}
-    .file-preview img{max-width:100%;max-height:200px;border-radius:var(--radius-sm)}
-    .file-preview-pdf{font-size:2rem;color:var(--color-text-secondary)}
-    .file-preview-name{font-size:.8rem;color:var(--color-text-secondary);margin-top:4px;word-break:break-all}
+    .file-list{margin-top:8px;display:flex;flex-direction:column;gap:8px}
+    .file-item{display:flex;align-items:center;gap:8px;padding:8px;border:1px solid var(--color-border);border-radius:var(--radius)}
+    .file-item-thumb{width:48px;height:48px;border-radius:var(--radius-sm);overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:#f5f5f5}
+    .file-item-thumb img{width:100%;height:100%;object-fit:cover}
+    .file-item-pdf{font-size:1.5rem;color:var(--color-text-secondary)}
+    .file-item-info{flex:1;min-width:0}
+    .file-item-name{font-size:.8rem;word-break:break-all}
+    .file-item-size{font-size:.7rem;color:var(--color-text-secondary)}
+    .file-item-remove{width:32px;height:32px;border:none;background:none;color:var(--color-error);font-size:1.2rem;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center}
   </style>
 </head>
 <body>
@@ -65,18 +70,18 @@
         </div>
 
         <div class="form-group">
-          <label class="form-label">Datei hochladen <span class="required">*</span></label>
+          <label class="form-label">Dateien hochladen <span class="required">*</span></label>
           <div class="upload-buttons">
             <button type="button" class="btn btn-secondary" id="btnCamera">&#128247; Kamera</button>
             <button type="button" class="btn btn-secondary" id="btnGallery">&#128444; Galerie</button>
             <button type="button" class="btn btn-secondary" id="btnFile">&#128196; Datei</button>
             <button type="button" class="btn btn-secondary" id="btnDrive">&#9729; Drive</button>
             <input type="file" id="inputCamera" accept="image/*" capture="environment">
-            <input type="file" id="inputGallery" accept="image/*">
-            <input type="file" id="inputFile" accept="*/*">
+            <input type="file" id="inputGallery" accept="image/*" multiple>
+            <input type="file" id="inputFile" accept="*/*" multiple>
           </div>
-          <div id="filePreview"></div>
-          <div class="form-warning" id="wFile">Bitte Datei hochladen</div>
+          <div class="file-list" id="fileList"></div>
+          <div class="form-warning" id="wFile">Bitte mindestens eine Datei hochladen</div>
         </div>
 
         <div class="form-group">
@@ -102,16 +107,10 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
   <script src="shared.js"></script>
   <script>
-    // --- Constants ---
-    var DOC_TYPES = [
-      'Belastungsversuch PDF','Bodengutachten','Lageplan','Statik/Lastangaben',
-      'Fundamentplan','Bauplaene','Richtpreisangebot','Foto','Sonstiges'
-    ];
-
     // --- State ---
     var currentId = null;
-    var fileData = null; // { dataUrl, name, type, size }
-    var uploadedUrl = null; // Firebase Storage download URL
+    var pendingFiles = []; // { dataUrl, name, type, size }
+    var isEditMode = false; // true when editing existing single doc
 
     // --- Init ---
     initApp(function(user) {
@@ -140,9 +139,9 @@
       document.getElementById('fProject').innerHTML = '<option value="">Bitte waehlen</option>' + opts;
       document.getElementById('filterProject').innerHTML = '<option value="">Alle Projekte</option>' + opts;
 
-      var typeOpts = DOC_TYPES.map(function(t) {
-        return '<option value="' + t + '">' + esc(t) + '</option>';
-      }).join('');
+      var types = ['Belastungsversuch PDF','Bodengutachten','Lageplan','Statik/Lastangaben',
+        'Fundamentplan','Bauplaene','Richtpreisangebot','Foto','Sonstiges'];
+      var typeOpts = types.map(function(t) { return '<option value="' + t + '">' + t + '</option>'; }).join('');
       document.getElementById('filterDocType').innerHTML = '<option value="">Alle Typen</option>' + typeOpts;
     }
 
@@ -154,6 +153,7 @@
       document.getElementById('listView').style.display = '';
       document.getElementById('formView').style.display = 'none';
       currentId = null;
+      isEditMode = false;
       history.replaceState(null, '', 'documents.html');
       renderList();
     }
@@ -168,7 +168,6 @@
         if (typeFilter && d.docType !== typeFilter) return false;
         return true;
       });
-
       filtered.sort(function(a, b) { return (b.date || '').localeCompare(a.date || ''); });
 
       var container = document.getElementById('docList');
@@ -179,14 +178,11 @@
 
       container.innerHTML = filtered.map(function(d) {
         var proj = d.projectId ? getItemById('projects', d.projectId) : null;
-        var projName = proj ? proj.name : (d.projectName || '');
-        var isImage = d.fileType === 'image' && d.fileDataUrl;
-        var thumb;
-        if (isImage) {
-          thumb = '<div class="doc-card-thumb"><img src="' + d.fileDataUrl + '" alt=""></div>';
-        } else {
-          thumb = '<div class="doc-card-thumb">&#128196;<br>PDF</div>';
-        }
+        var projName = proj ? proj.name : '';
+        var isImage = d.fileType === 'image';
+        var thumb = isImage && d.fileDataUrl
+          ? '<div class="doc-card-thumb"><img src="' + d.fileDataUrl + '" alt=""></div>'
+          : '<div class="doc-card-thumb">&#128196;<br>PDF</div>';
 
         return '<div class="card card-clickable" data-id="' + d.id + '" style="display:flex;gap:12px;align-items:center;">' +
           thumb +
@@ -200,9 +196,7 @@
       }).join('');
 
       container.querySelectorAll('[data-id]').forEach(function(card) {
-        card.addEventListener('click', function() {
-          openForm(card.getAttribute('data-id'));
-        });
+        card.addEventListener('click', function() { openForm(card.getAttribute('data-id')); });
       });
     }
 
@@ -217,12 +211,12 @@
     function openForm(id) {
       document.getElementById('listView').style.display = 'none';
       document.getElementById('formView').style.display = '';
-      fileData = null;
-      uploadedUrl = null;
+      pendingFiles = [];
       clearWarnings();
 
       if (id) {
         currentId = id;
+        isEditMode = true;
         var d = getItemById('documents', id);
         if (!d) { showToast('Dokument nicht gefunden', 'error'); showList(); return; }
         document.getElementById('formTitle').textContent = 'Dokument bearbeiten';
@@ -231,7 +225,8 @@
         document.getElementById('btnDelete').style.display = '';
       } else {
         currentId = null;
-        document.getElementById('formTitle').textContent = 'Neues Dokument';
+        isEditMode = false;
+        document.getElementById('formTitle').textContent = 'Dokumente hochladen';
         history.replaceState(null, '', 'documents.html?new=1');
         resetForm();
         document.getElementById('btnDelete').style.display = 'none';
@@ -244,26 +239,18 @@
       document.getElementById('fDocType').value = d.docType || '';
       document.getElementById('fDescription').value = d.description || '';
       document.getElementById('fDate').value = d.date || '';
-      uploadedUrl = d.downloadUrl || null;
-
-      // Restore file preview
       if (d.fileDataUrl) {
-        fileData = { dataUrl: d.fileDataUrl, name: d.fileName, type: d.fileType, size: d.fileSize || 0 };
-        renderFilePreview();
+        pendingFiles = [{ dataUrl: d.fileDataUrl, name: d.fileName, type: d.fileType, size: d.fileSize || 0 }];
       } else if (d.downloadUrl) {
-        // File exists in Storage but no local preview
-        document.getElementById('filePreview').innerHTML =
-          '<div class="file-preview"><div class="file-preview-name">&#128279; ' + esc(d.fileName || 'Datei') + ' (in Cloud gespeichert)</div></div>';
-      } else {
-        document.getElementById('filePreview').innerHTML = '';
+        pendingFiles = [{ dataUrl: null, name: d.fileName, type: d.fileType, size: d.fileSize || 0, cloudUrl: d.downloadUrl }];
       }
+      renderFileList();
     }
 
     function resetForm() {
       document.getElementById('docForm').reset();
-      fileData = null;
-      uploadedUrl = null;
-      document.getElementById('filePreview').innerHTML = '';
+      pendingFiles = [];
+      renderFileList();
     }
 
     function clearWarnings() {
@@ -271,98 +258,111 @@
     }
 
     // =============================================
-    //  FILE UPLOAD
+    //  FILE UPLOADS (multiple)
     // =============================================
 
     function setupUploads() {
-      document.getElementById('btnCamera').addEventListener('click', function() {
-        document.getElementById('inputCamera').click();
-      });
-      document.getElementById('btnGallery').addEventListener('click', function() {
-        document.getElementById('inputGallery').click();
-      });
-      document.getElementById('btnFile').addEventListener('click', function() {
-        document.getElementById('inputFile').click();
-      });
+      document.getElementById('btnCamera').addEventListener('click', function() { document.getElementById('inputCamera').click(); });
+      document.getElementById('btnGallery').addEventListener('click', function() { document.getElementById('inputGallery').click(); });
+      document.getElementById('btnFile').addEventListener('click', function() { document.getElementById('inputFile').click(); });
       document.getElementById('btnDrive').addEventListener('click', function() {
-        showToast('Google Drive Integration kommt in Phase 2', 'info');
+        showToast('Google Drive kommt in Phase 2', 'info');
       });
 
       ['inputCamera','inputGallery','inputFile'].forEach(function(inputId) {
         document.getElementById(inputId).addEventListener('change', function(e) {
-          var file = e.target.files[0];
-          if (!file) return;
+          var files = Array.from(e.target.files);
+          var remaining = files.length;
+          if (remaining === 0) return;
 
-          // Size check (5 MB)
-          if (file.size > 5 * 1024 * 1024) {
-            showToast('Datei zu gross (max. 5 MB)', 'error');
-            e.target.value = '';
-            return;
-          }
-
-          var isImage = file.type.startsWith('image/');
-          if (isImage) {
-            compressImage(file, 1920, 5).then(function(blob) {
-              blobToDataUrl(blob, file.name, 'image');
-            });
-          } else {
-            blobToDataUrl(file, file.name, 'file');
-          }
+          files.forEach(function(file) {
+            if (file.size > 5 * 1024 * 1024) {
+              showToast(file.name + ' ist zu gross (max. 5 MB)', 'error');
+              if (--remaining === 0) renderFileList();
+              return;
+            }
+            var isImage = file.type.startsWith('image/');
+            if (isImage) {
+              compressImage(file, 1920, 5).then(function(blob) {
+                fileToDataUrl(blob, file.name, 'image', blob.size, function() {
+                  if (--remaining === 0) renderFileList();
+                });
+              });
+            } else {
+              fileToDataUrl(file, file.name, 'file', file.size, function() {
+                if (--remaining === 0) renderFileList();
+              });
+            }
+          });
           e.target.value = '';
         });
       });
     }
 
-    function blobToDataUrl(blob, name, type) {
+    function fileToDataUrl(blob, name, type, size, done) {
       var reader = new FileReader();
       reader.onload = function() {
-        fileData = { dataUrl: reader.result, name: name, type: type, size: blob.size };
-        uploadedUrl = null; // Reset — will upload on save
-        renderFilePreview();
+        pendingFiles.push({ dataUrl: reader.result, name: name, type: type, size: size });
+        done();
       };
       reader.readAsDataURL(blob);
     }
 
-    function renderFilePreview() {
-      var container = document.getElementById('filePreview');
-      if (!fileData) { container.innerHTML = ''; return; }
+    function formatSize(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    }
 
-      if (fileData.type === 'image') {
-        container.innerHTML = '<div class="file-preview">' +
-          '<img src="' + fileData.dataUrl + '" alt="Vorschau">' +
-          '<div class="file-preview-name">' + esc(fileData.name) + '</div></div>';
-      } else {
-        container.innerHTML = '<div class="file-preview">' +
-          '<div class="file-preview-pdf">&#128196;</div>' +
-          '<div class="file-preview-name">' + esc(fileData.name) + '</div></div>';
-      }
+    function renderFileList() {
+      var container = document.getElementById('fileList');
+      if (pendingFiles.length === 0) { container.innerHTML = ''; return; }
+
+      container.innerHTML = pendingFiles.map(function(f, i) {
+        var thumb;
+        if (f.type === 'image' && f.dataUrl) {
+          thumb = '<div class="file-item-thumb"><img src="' + f.dataUrl + '" alt=""></div>';
+        } else {
+          thumb = '<div class="file-item-thumb"><span class="file-item-pdf">&#128196;</span></div>';
+        }
+        var cloudTag = f.cloudUrl && !f.dataUrl ? ' (Cloud)' : '';
+        return '<div class="file-item">' + thumb +
+          '<div class="file-item-info">' +
+            '<div class="file-item-name">' + esc(f.name) + cloudTag + '</div>' +
+            '<div class="file-item-size">' + formatSize(f.size) + '</div>' +
+          '</div>' +
+          '<button type="button" class="file-item-remove" data-i="' + i + '">&times;</button>' +
+        '</div>';
+      }).join('');
+
+      container.querySelectorAll('.file-item-remove').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          pendingFiles.splice(parseInt(btn.getAttribute('data-i')), 1);
+          renderFileList();
+        });
+      });
     }
 
     // =============================================
-    //  FIREBASE STORAGE UPLOAD
+    //  FIREBASE STORAGE
     // =============================================
 
     function uploadToStorage(projectId, docId, fileObj) {
       if (!isOnline || !fileObj || !fileObj.dataUrl) return Promise.resolve(null);
-
-      var storageRef = storage.ref('files/' + projectId + '/' + docId);
-      // Convert dataUrl to blob for upload
-      var parts = fileObj.dataUrl.split(',');
-      var mime = parts[0].match(/:(.*?);/)[1];
-      var bstr = atob(parts[1]);
-      var arr = new Uint8Array(bstr.length);
-      for (var i = 0; i < bstr.length; i++) arr[i] = bstr.charCodeAt(i);
-      var blob = new Blob([arr], { type: mime });
-
-      return storageRef.put(blob).then(function(snapshot) {
-        return snapshot.ref.getDownloadURL();
-      }).then(function(url) {
-        console.log('[Docs] Uploaded to Storage, URL:', url);
-        return url;
-      }).catch(function(err) {
-        console.error('[Docs] Storage upload error:', err);
-        return null;
-      });
+      try {
+        var ref = storage.ref('files/' + projectId + '/' + docId);
+        var parts = fileObj.dataUrl.split(',');
+        var mime = parts[0].match(/:(.*?);/)[1];
+        var bstr = atob(parts[1]);
+        var arr = new Uint8Array(bstr.length);
+        for (var i = 0; i < bstr.length; i++) arr[i] = bstr.charCodeAt(i);
+        var blob = new Blob([arr], { type: mime });
+        return ref.put(blob).then(function(snap) { return snap.ref.getDownloadURL(); })
+          .catch(function(err) { console.error('[Docs] Upload error:', err); return null; });
+      } catch (e) {
+        console.error('[Docs] Upload prep error:', e);
+        return Promise.resolve(null);
+      }
     }
 
     // =============================================
@@ -371,7 +371,7 @@
 
     document.getElementById('docForm').addEventListener('submit', function(e) {
       e.preventDefault();
-      console.log('[Docs] Save triggered');
+      console.log('[Docs] Save triggered, files:', pendingFiles.length);
 
       try {
         clearWarnings();
@@ -384,69 +384,99 @@
 
         var projectId = document.getElementById('fProject').value;
         var docType = document.getElementById('fDocType').value;
-        var hasFile = !!fileData || !!uploadedUrl;
-
         warn('wProject', !projectId);
         warn('wDocType', !docType);
-        warn('wFile', !hasFile);
+        warn('wFile', pendingFiles.length === 0);
 
         var proj = projectId ? getItemById('projects', projectId) : null;
+        var description = document.getElementById('fDescription').value.trim();
+        var date = document.getElementById('fDate').value;
 
-        var data = {
-          projectId: projectId,
-          projectName: proj ? proj.name : '',
-          docType: docType,
-          description: document.getElementById('fDescription').value.trim(),
-          date: document.getElementById('fDate').value,
-          fileName: fileData ? fileData.name : '',
-          fileType: fileData ? fileData.type : '',
-          fileSize: fileData ? fileData.size : 0,
-          fileDataUrl: fileData ? fileData.dataUrl : '',
-          downloadUrl: uploadedUrl || ''
-        };
+        if (isEditMode && currentId) {
+          // Edit mode: save single doc
+          var f = pendingFiles[0] || {};
+          var data = {
+            projectId: projectId,
+            projectName: proj ? proj.name : '',
+            docType: docType,
+            description: description,
+            date: date,
+            fileName: f.name || '',
+            fileType: f.type || '',
+            fileSize: f.size || 0,
+            fileDataUrl: f.dataUrl || '',
+            downloadUrl: f.cloudUrl || ''
+          };
+          try { saveToLocal('documents', currentId, data); }
+          catch (err) { data.fileDataUrl = ''; saveToLocal('documents', currentId, data); }
 
-        var id = currentId || generateId();
-        console.log('[Docs] Saving id=' + id);
+          showToast(hasWarning ? 'Gespeichert (fehlende Pflichtfelder)' : 'Dokument gespeichert', hasWarning ? 'warning' : 'success');
 
-        try {
-          saveToLocal('documents', id, data);
-        } catch (storageErr) {
-          console.error('[Docs] localStorage error:', storageErr);
-          // If quota exceeded, try saving without dataUrl
-          data.fileDataUrl = '';
-          try {
-            saveToLocal('documents', id, data);
-            showToast('Gespeichert (Datei nur in Cloud)', 'warning');
-          } catch (err2) {
-            showToast('Speicherfehler: ' + err2.message, 'error');
+          // Upload to Storage
+          if (isOnline && f.dataUrl && projectId && !f.cloudUrl) {
+            uploadToStorage(projectId, currentId, f).then(function(url) {
+              if (url) {
+                var item = getItemById('documents', currentId);
+                if (item) { item.downloadUrl = url; saveToLocal('documents', currentId, item); }
+              }
+            });
+          }
+        } else {
+          // New mode: create one document per file
+          if (pendingFiles.length === 0) {
+            showToast('Bitte mindestens eine Datei hochladen', 'error');
+            return;
+          }
+
+          var savedIds = [];
+          pendingFiles.forEach(function(f) {
+            var docId = generateId();
+            var data = {
+              projectId: projectId,
+              projectName: proj ? proj.name : '',
+              docType: docType,
+              description: description,
+              date: date,
+              fileName: f.name || '',
+              fileType: f.type || '',
+              fileSize: f.size || 0,
+              fileDataUrl: f.dataUrl || '',
+              downloadUrl: ''
+            };
+            try { saveToLocal('documents', docId, data); }
+            catch (err) { data.fileDataUrl = ''; saveToLocal('documents', docId, data); }
+            savedIds.push(docId);
+
+            // Upload to Storage
+            if (isOnline && f.dataUrl && projectId) {
+              uploadToStorage(projectId, docId, f).then(function(url) {
+                if (url) {
+                  var item = getItemById('documents', docId);
+                  if (item) { item.downloadUrl = url; saveToLocal('documents', docId, item); }
+                }
+              });
+            }
+          });
+
+          var count = savedIds.length;
+          showToast(count + ' Dokument' + (count > 1 ? 'e' : '') + ' gespeichert' +
+            (hasWarning ? ' (fehlende Pflichtfelder)' : ''), hasWarning ? 'warning' : 'success');
+
+          // If single file, open it for editing
+          if (savedIds.length === 1) {
+            currentId = savedIds[0];
+            isEditMode = true;
+            history.replaceState(null, '', 'documents.html?id=' + currentId);
+            document.getElementById('formTitle').textContent = 'Dokument bearbeiten';
+            document.getElementById('btnDelete').style.display = '';
+          } else {
+            // Multiple files: go back to list
+            showList();
             return;
           }
         }
-
-        showToast(hasWarning ? 'Gespeichert (fehlende Pflichtfelder)' : 'Dokument gespeichert', hasWarning ? 'warning' : 'success');
-
-        currentId = id;
-        history.replaceState(null, '', 'documents.html?id=' + id);
-        document.getElementById('formTitle').textContent = 'Dokument bearbeiten';
-        document.getElementById('btnDelete').style.display = '';
-
-        // Upload to Firebase Storage in background
-        if (isOnline && fileData && projectId && !uploadedUrl) {
-          uploadToStorage(projectId, id, fileData).then(function(url) {
-            if (url) {
-              uploadedUrl = url;
-              var item = getItemById('documents', id);
-              if (item) {
-                item.downloadUrl = url;
-                saveToLocal('documents', id, item);
-                console.log('[Docs] Download URL saved');
-              }
-            }
-          });
-        }
-
       } catch (err) {
-        console.error('[Docs] Unexpected save error:', err);
+        console.error('[Docs] Save error:', err);
         showToast('Fehler: ' + err.message, 'error');
       }
     });
