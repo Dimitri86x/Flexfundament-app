@@ -123,19 +123,10 @@
       var editId = getUrlParam('id');
       var isNew = getUrlParam('new');
       var urlProjectId = getUrlParam('projectId');
+      // projectId handling is done inside openForm()
       if (editId) openForm(editId);
       else if (isNew) openForm(null);
       else showList();
-
-      // Pre-select project from URL and show name instead of dropdown
-      if (urlProjectId && !editId) {
-        document.getElementById('fProject').value = urlProjectId;
-        document.getElementById('projectDropdownGroup').style.display = 'none';
-        var proj = getItemById('projects', urlProjectId);
-        var nameEl = document.getElementById('projectNameDisplay');
-        nameEl.textContent = 'Projekt: ' + (proj ? (proj.name || 'Ohne Bezeichnung') : urlProjectId);
-        nameEl.style.display = '';
-      }
 
       if (isOnline) {
         syncWithFirebase('documents').then(function() {
@@ -237,6 +228,21 @@
       document.getElementById('formView').style.display = '';
       pendingFiles = [];
       clearWarnings();
+
+      // Handle project context from URL
+      var urlProjectId = getUrlParam('projectId');
+      if (urlProjectId) {
+        document.getElementById('fProject').value = urlProjectId;
+        document.getElementById('projectDropdownGroup').style.display = 'none';
+        var proj = getItemById('projects', urlProjectId);
+        var nameEl = document.getElementById('projectNameDisplay');
+        nameEl.textContent = 'Projekt: ' + (proj ? (proj.name || 'Ohne Bezeichnung') : urlProjectId);
+        nameEl.style.display = '';
+        console.log('[Docs] Project from URL:', urlProjectId, proj ? proj.name : '(not found)');
+      } else {
+        document.getElementById('projectDropdownGroup').style.display = '';
+        document.getElementById('projectNameDisplay').style.display = 'none';
+      }
 
       if (id) {
         currentId = id;

@@ -128,6 +128,21 @@ function openForm(id) {
   gpsLng = null;
   clearWarnings();
 
+  // Handle project context from URL
+  var urlProjectId = getUrlParam('projectId');
+  if (urlProjectId) {
+    document.getElementById('fProject').value = urlProjectId;
+    document.getElementById('projectDropdownGroup').style.display = 'none';
+    var proj = getItemById('projects', urlProjectId);
+    var nameEl = document.getElementById('projectNameDisplay');
+    nameEl.textContent = 'Projekt: ' + (proj ? (proj.name || 'Ohne Bezeichnung') : urlProjectId);
+    nameEl.style.display = '';
+    console.log('[Reports] Project from URL:', urlProjectId, proj ? proj.name : '(not found)');
+  } else {
+    document.getElementById('projectDropdownGroup').style.display = '';
+    document.getElementById('projectNameDisplay').style.display = 'none';
+  }
+
   if (id) {
     currentId = id;
     var r = getItemById('reports', id);
@@ -207,15 +222,10 @@ function resetForm() {
   ['actPullCount','actScrewCount','actMontageCount'].forEach(function(id) {
     document.getElementById(id).style.display = 'none';
   });
+  // projectId from URL is handled in openForm()
   var projId = getUrlParam('projectId');
   if (projId) {
     document.getElementById('fProject').value = projId;
-    // Hide dropdown, show project name as text
-    document.getElementById('projectDropdownGroup').style.display = 'none';
-    var proj = getItemById('projects', projId);
-    var nameEl = document.getElementById('projectNameDisplay');
-    nameEl.textContent = 'Projekt: ' + (proj ? (proj.name || 'Ohne Bezeichnung') : projId);
-    nameEl.style.display = '';
   }
   gpsLat = null;
   gpsLng = null;
