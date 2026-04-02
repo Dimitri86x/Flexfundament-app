@@ -747,11 +747,22 @@
       if (!d) { showToast('Dokument nicht gefunden', 'error'); return; }
       var dataUrl = d.fileDataUrl || localStorage.getItem('offline_doc_' + docId);
       var url = dataUrl || d.downloadUrl;
+
+      console.log('Öffne Dokument:', docId, 'URL:', url ? url.substring(0, 80) + '...' : 'keine', 'Dateityp:', d.fileType);
+
       if (!url) { showToast('Datei nicht verfuegbar', 'error'); return; }
-      if (d.fileType === 'image' && dataUrl) {
-        showImageOverlay(dataUrl);
+
+      // Images: show in fullscreen overlay
+      if (d.fileType === 'image') {
+        showImageOverlay(url);
+      // PDFs: open in new tab, fallback to redirect
+      } else if (d.fileType === 'pdf' || (d.fileName && d.fileName.toLowerCase().endsWith('.pdf'))) {
+        var w = window.open(url, '_blank');
+        if (!w) { window.location.href = url; }
+      // Other files: open in new tab
       } else {
-        window.open(url, '_blank');
+        var w = window.open(url, '_blank');
+        if (!w) { window.location.href = url; }
       }
     }
 
@@ -772,8 +783,11 @@
     function showImageOverlay(src) {
       var overlay = document.createElement('div');
       overlay.style.cssText = 'position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.9);display:flex;align-items:center;justify-content:center;cursor:pointer;';
-      overlay.innerHTML = '<img src="' + src + '" style="max-width:95vw;max-height:95vh;object-fit:contain;border-radius:8px;">';
-      overlay.addEventListener('click', function() { document.body.removeChild(overlay); });
+      overlay.innerHTML = '<span style="position:absolute;top:16px;right:20px;color:#fff;font-size:36px;cursor:pointer;z-index:1001;line-height:1;">&times;</span>' +
+        '<img src="' + src + '" style="max-width:95vw;max-height:95vh;object-fit:contain;border-radius:8px;" crossorigin="anonymous">';
+      overlay.addEventListener('click', function() {
+        if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+      });
       document.body.appendChild(overlay);
     }
   </script>

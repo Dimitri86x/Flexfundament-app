@@ -528,16 +528,25 @@
       var dataUrl = d.fileDataUrl || localStorage.getItem('offline_doc_' + docId);
       var url = dataUrl || d.downloadUrl;
 
+      console.log('Öffne Dokument:', docId, 'URL:', url ? url.substring(0, 80) + '...' : 'keine', 'Dateityp:', d.fileType);
+
       if (!url) {
         if (!isOnline) showToast('Offline — Datei nicht lokal gespeichert', 'error');
         else showToast('Datei nicht verfuegbar', 'error');
         return;
       }
 
-      if (d.fileType === 'image' && dataUrl) {
-        showImageOverlay(dataUrl);
+      // Images: show in fullscreen overlay
+      if (d.fileType === 'image') {
+        showImageOverlay(url);
+      // PDFs: open in new tab, fallback to redirect
+      } else if (d.fileType === 'pdf' || (d.fileName && d.fileName.toLowerCase().endsWith('.pdf'))) {
+        var w = window.open(url, '_blank');
+        if (!w) { window.location.href = url; }
+      // Other files: open in new tab
       } else {
-        window.open(url, '_blank');
+        var w = window.open(url, '_blank');
+        if (!w) { window.location.href = url; }
       }
     }
 
@@ -637,8 +646,11 @@
     function showImageOverlay(src) {
       var overlay = document.createElement('div');
       overlay.className = 'doc-overlay';
-      overlay.innerHTML = '<img src="' + src + '" alt="Dokument">';
-      overlay.addEventListener('click', function() { document.body.removeChild(overlay); });
+      overlay.innerHTML = '<span style="position:absolute;top:16px;right:20px;color:#fff;font-size:36px;cursor:pointer;z-index:1001;line-height:1;">&times;</span>' +
+        '<img src="' + src + '" alt="Dokument" crossorigin="anonymous">';
+      overlay.addEventListener('click', function() {
+        if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+      });
       document.body.appendChild(overlay);
     }
 
