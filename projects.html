@@ -652,8 +652,19 @@
       }
 
       var drives = getActiveItems('drives').filter(function(d) { return d.projectId === projectId; });
-      document.getElementById('linkedDrives').textContent =
-        drives.length === 0 ? 'Noch keine Fahrten' : drives.length + ' Fahrt' + (drives.length > 1 ? 'en' : '');
+      var elDrives = document.getElementById('linkedDrives');
+      if (drives.length === 0) {
+        elDrives.innerHTML = 'Noch keine Fahrten';
+      } else {
+        elDrives.innerHTML = drives.sort(function(a, b) { return (b.date || '').localeCompare(a.date || ''); }).map(function(d) {
+          var kmDriven = (d.kmEnd && d.kmStart) ? (d.kmEnd - d.kmStart) : 0;
+          var label = (d.date ? formatDate(d.date) : 'Ohne Datum') +
+            ' — ' + esc(d.startLocation || '?') + ' → ' + esc(d.endLocation || '?') +
+            ' (' + kmDriven + ' km)';
+          return '<a href="drives.html?id=' + d.id + '&projectId=' + projectId + '" style="display:block;padding:6px 0;border-bottom:1px solid var(--color-border);font-size:.85rem;">' +
+            esc(label) + '</a>';
+        }).join('');
+      }
 
       var costs = getActiveItems('costs').filter(function(c) { return c.projectId === projectId; });
       document.getElementById('linkedCosts').textContent =

@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fahrtenbuch – Flexfundament</title>
+  <link rel="stylesheet" href="shared.css">
+  <link rel="manifest" href="manifest.json">
+  <style>
+    .km-result{font-size:1.1rem;font-weight:600;color:var(--color-primary);padding:8px 0}
+    .autocomplete-list{position:absolute;left:0;right:0;background:#fff;border:1px solid var(--color-border);border-radius:var(--radius-sm);max-height:150px;overflow-y:auto;z-index:50}
+    .autocomplete-item{padding:10px 12px;cursor:pointer;font-size:.9rem}
+    .autocomplete-item:hover{background:var(--color-bg)}
+    .upload-buttons{display:flex;gap:8px;flex-wrap:wrap}
+    .upload-buttons .btn{font-size:.8rem;padding:8px 12px}
+    .upload-buttons input[type="file"]{display:none}
+    .photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:8px;margin-top:8px}
+    .photo-grid img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:var(--radius-sm)}
+  </style>
+</head>
+<body>
+
+  <!-- LIST VIEW -->
+  <div id="listView" class="page">
+    <a href="dashboard.html" class="btn-back">&#8592; Zurueck zum Dashboard</a>
+    <div class="filter-bar">
+      <select class="form-select" id="filterProject"><option value="">Alle Projekte</option></select>
+    </div>
+    <div id="driveList"></div>
+    <button class="fab" id="btnNew" title="Neue Fahrt">+</button>
+  </div>
+
+  <!-- FORM VIEW -->
+  <div id="formView" class="page" style="display:none;">
+    <button class="btn-back" id="btnBack" type="button">&#8592; Zurueck</button>
+    <h2 style="font-size:1.1rem;font-weight:600;margin-bottom:16px;" id="formTitle">Neue Fahrt</h2>
+
+    <form id="driveForm" novalidate>
+      <div class="card">
+        <div class="card-title">Fahrtdaten</div>
+
+        <div class="form-group" id="projectDropdownGroup">
+          <label class="form-label">Projekt</label>
+          <select class="form-select" id="fProject"><option value="">Kein Projekt</option></select>
+        </div>
+        <div id="projectNameDisplay" style="display:none;padding:8px 0;font-weight:600;font-size:0.95rem;color:var(--color-primary);"></div>
+
+        <div class="form-group">
+          <label class="form-label">Datum <span class="required">*</span></label>
+          <input type="date" class="form-input" id="fDate" required>
+          <div class="form-warning" id="wDate">Bitte Datum eingeben</div>
+        </div>
+
+        <div class="form-group" style="position:relative;">
+          <label class="form-label">Fahrer <span class="required">*</span></label>
+          <input type="text" class="form-input" id="fDriver" required autocomplete="off">
+          <div class="autocomplete-list" id="acDriver" style="display:none;"></div>
+          <div class="form-warning" id="wDriver">Bitte Fahrer eingeben</div>
+        </div>
+
+        <div class="form-group" style="position:relative;">
+          <label class="form-label">Fahrzeug <span class="required">*</span></label>
+          <input type="text" class="form-input" id="fVehicle" required autocomplete="off">
+          <div class="autocomplete-list" id="acVehicle" style="display:none;"></div>
+          <div class="form-warning" id="wVehicle">Bitte Fahrzeug eingeben</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Strecke</div>
+
+        <div class="form-group">
+          <label class="form-label">Startort <span class="required">*</span></label>
+          <input type="text" class="form-input" id="fStart" required>
+          <div class="form-warning" id="wStart">Bitte Startort eingeben</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Zielort <span class="required">*</span></label>
+          <input type="text" class="form-input" id="fEnd" required>
+          <div class="form-warning" id="wEnd">Bitte Zielort eingeben</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Kilometerstand Start <span class="required">*</span></label>
+          <input type="number" class="form-input" id="fKmStart" required min="0" step="1">
+          <div class="form-warning" id="wKmStart">Bitte Kilometerstand eingeben</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Kilometerstand Ende <span class="required">*</span></label>
+          <input type="number" class="form-input" id="fKmEnd" required min="0" step="1">
+          <div class="form-warning" id="wKmEnd">Bitte Kilometerstand eingeben</div>
+          <div class="form-error" id="eKmEnd" style="display:none;">Ende muss groesser als Start sein</div>
+        </div>
+
+        <div class="km-result" id="kmResult">Gefahrene Kilometer: —</div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Details</div>
+
+        <div class="form-group">
+          <label class="form-label">Fahrtzweck <span class="required">*</span></label>
+          <select class="form-select" id="fPurpose" required>
+            <option value="">Bitte waehlen</option>
+            <option value="Baustellenfahrt">Baustellenfahrt</option>
+            <option value="Materialtransport">Materialtransport</option>
+            <option value="Sonstiges">Sonstiges</option>
+          </select>
+          <div class="form-warning" id="wPurpose">Bitte Fahrtzweck waehlen</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Notizen</label>
+          <textarea class="form-textarea" id="fNotes" rows="3"></textarea>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Fotos</label>
+          <div class="upload-buttons">
+            <button type="button" class="btn btn-secondary" id="btnPhoto">&#128247; Foto</button>
+            <button type="button" class="btn btn-secondary" id="btnFile">&#128196; Datei</button>
+            <input type="file" id="inputPhoto" accept="image/*" capture="environment">
+            <input type="file" id="inputFile" accept="*/*" multiple>
+          </div>
+          <div class="photo-grid" id="photoGrid"></div>
+        </div>
+      </div>
+
+      <button type="submit" class="btn btn-primary btn-block">Speichern</button>
+      <button type="button" class="btn btn-danger btn-block mt-sm" id="btnDelete" style="display:none;">Loeschen</button>
+    </form>
+  </div>
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
+  <script src="shared.js"></script>
+  <script>
+    // --- State ---
+    var currentId = null;
+    var photos = []; // { dataUrl, name, type }
+
+    // --- Init ---
+    initApp(function(user) {
+      console.log('[Drives] Init start');
+      renderNav('drives');
+      populateDropdowns();
+      setupAutocomplete();
+      setupKmCalc();
+      setupUploads();
+
+      var editId = getUrlParam('id');
+      var isNew = getUrlParam('new');
+      if (editId) openForm(editId);
+      else if (isNew) openForm(null);
+      else showList();
+
+      if (isOnline) {
+        syncWithFirebase('drives').then(function() {
+          if (!currentId && !isNew) renderList();
+        });
+      }
+    });
+
+    function populateDropdowns() {
+      var projects = getActiveItems('projects');
+      var opts = projects.map(function(p) {
+        return '<option value="' + p.id + '">' + esc(p.name || 'Ohne Bezeichnung') + '</option>';
+      }).join('');
+      document.getElementById('fProject').innerHTML = '<option value="">Kein Projekt</option>' + opts;
+      document.getElementById('filterProject').innerHTML = '<option value="">Alle Projekte</option>' + opts;
+    }
+
+    // =============================================
+    //  LIST VIEW
+    // =============================================
+
+    function showList() {
+      document.getElementById('listView').style.display = '';
+      document.getElementById('formView').style.display = 'none';
+      currentId = null;
+      history.replaceState(null, '', 'drives.html');
+      renderList();
+    }
+
+    function renderList() {
+      var drives = getActiveItems('drives');
+      var projFilter = document.getElementById('filterProject').value;
+
+      var filtered = drives.filter(function(d) {
+        if (projFilter && d.projectId !== projFilter) return false;
+        return true;
+      });
+
+      filtered.sort(function(a, b) {
+        return (b.date || '').localeCompare(a.date || '');
+      });
+
+      var el = document.getElementById('driveList');
+      if (filtered.length === 0) {
+        el.innerHTML = '<p class="list-empty">Noch keine Fahrten</p>';
+        return;
+      }
+
+      el.innerHTML = filtered.map(function(d) {
+        var proj = d.projectId ? getItemById('projects', d.projectId) : null;
+        var projName = proj ? proj.name : '';
+        var kmDriven = (d.kmEnd && d.kmStart) ? (d.kmEnd - d.kmStart) : 0;
+        return '<div class="card card-clickable" data-id="' + d.id + '">' +
+          '<div style="display:flex;justify-content:space-between;align-items:flex-start;">' +
+            '<div>' +
+              '<div style="font-weight:600;">' + (d.date ? formatDate(d.date) : 'Ohne Datum') + '</div>' +
+              '<div style="font-size:.85rem;color:var(--color-text-secondary);">' +
+                esc(d.startLocation || '?') + ' → ' + esc(d.endLocation || '?') +
+              '</div>' +
+              (d.driver ? '<div style="font-size:.8rem;color:var(--color-text-secondary);">' + esc(d.driver) + (d.vehicle ? ' — ' + esc(d.vehicle) : '') + '</div>' : '') +
+              (projName ? '<div style="font-size:.8rem;color:var(--color-text-secondary);">' + esc(projName) + '</div>' : '') +
+            '</div>' +
+            '<div style="text-align:right;">' +
+              '<div style="font-weight:600;color:var(--color-primary);">' + kmDriven + ' km</div>' +
+              (d.purpose ? '<div style="font-size:.75rem;" class="badge badge-aktiv">' + esc(d.purpose) + '</div>' : '') +
+            '</div>' +
+          '</div>' +
+        '</div>';
+      }).join('');
+
+      el.querySelectorAll('.card-clickable').forEach(function(card) {
+        card.addEventListener('click', function() { openForm(card.getAttribute('data-id')); });
+      });
+    }
+
+    document.getElementById('filterProject').addEventListener('change', renderList);
+    document.getElementById('btnNew').addEventListener('click', function() { openForm(null); });
+
+    // =============================================
+    //  FORM VIEW
+    // =============================================
+
+    function openForm(id) {
+      document.getElementById('listView').style.display = 'none';
+      document.getElementById('formView').style.display = '';
+      photos = [];
+      clearWarnings();
+
+      // Read projectId from URL BEFORE replaceState changes it
+      var urlProjectId = getUrlParam('projectId');
+
+      if (id) {
+        currentId = id;
+        var d = getItemById('drives', id);
+        if (!d) { showToast('Fahrt nicht gefunden', 'error'); showList(); return; }
+        document.getElementById('formTitle').textContent = 'Fahrt bearbeiten';
+        history.replaceState(null, '', 'drives.html?id=' + id + (urlProjectId ? '&projectId=' + urlProjectId : ''));
+        fillForm(d);
+        document.getElementById('btnDelete').style.display = '';
+      } else {
+        currentId = null;
+        document.getElementById('formTitle').textContent = 'Neue Fahrt';
+        history.replaceState(null, '', 'drives.html?new=1' + (urlProjectId ? '&projectId=' + urlProjectId : ''));
+        resetForm();
+        document.getElementById('btnDelete').style.display = 'none';
+      }
+
+      // Set project AFTER resetForm (which calls .reset() and clears fields)
+      if (urlProjectId) {
+        document.getElementById('fProject').value = urlProjectId;
+        document.getElementById('projectDropdownGroup').style.display = 'none';
+        var proj = getItemById('projects', urlProjectId);
+        var nameEl = document.getElementById('projectNameDisplay');
+        nameEl.textContent = 'Projekt: ' + (proj ? (proj.name || 'Ohne Bezeichnung') : urlProjectId);
+        nameEl.style.display = '';
+        console.log('[Drives] Project from URL:', urlProjectId, proj ? proj.name : '(not found)');
+      } else {
+        document.getElementById('projectDropdownGroup').style.display = '';
+        document.getElementById('projectNameDisplay').style.display = 'none';
+      }
+
+      window.scrollTo(0, 0);
+    }
+
+    function fillForm(d) {
+      document.getElementById('fProject').value = d.projectId || '';
+      document.getElementById('fDate').value = d.date || '';
+      document.getElementById('fDriver').value = d.driver || '';
+      document.getElementById('fVehicle').value = d.vehicle || '';
+      document.getElementById('fStart').value = d.startLocation || '';
+      document.getElementById('fEnd').value = d.endLocation || '';
+      document.getElementById('fKmStart').value = d.kmStart || '';
+      document.getElementById('fKmEnd').value = d.kmEnd || '';
+      document.getElementById('fPurpose').value = d.purpose || '';
+      document.getElementById('fNotes').value = d.notes || '';
+      photos = (d.photos || []).slice();
+      renderPhotos();
+      updateKm();
+    }
+
+    function resetForm() {
+      document.getElementById('driveForm').reset();
+      photos = [];
+      renderPhotos();
+      document.getElementById('kmResult').textContent = 'Gefahrene Kilometer: —';
+    }
+
+    function clearWarnings() {
+      document.querySelectorAll('.form-warning,.form-error').forEach(function(w) {
+        w.classList.remove('visible');
+        w.style.display = '';
+      });
+      document.getElementById('eKmEnd').style.display = 'none';
+    }
+
+    // =============================================
+    //  AUTOCOMPLETE
+    // =============================================
+
+    function setupAutocomplete() {
+      setupAcField('fDriver', 'acDriver', 'driver');
+      setupAcField('fVehicle', 'acVehicle', 'vehicle');
+    }
+
+    function setupAcField(inputId, listId, field) {
+      var input = document.getElementById(inputId);
+      var list = document.getElementById(listId);
+
+      input.addEventListener('input', function() {
+        var val = input.value.trim().toLowerCase();
+        if (val.length < 1) { list.style.display = 'none'; return; }
+        var suggestions = getAutocompleteSuggestions('drives', field)
+          .filter(function(s) { return s.toLowerCase().indexOf(val) !== -1; });
+        if (suggestions.length === 0) { list.style.display = 'none'; return; }
+        list.innerHTML = suggestions.map(function(s) {
+          return '<div class="autocomplete-item">' + esc(s) + '</div>';
+        }).join('');
+        list.style.display = '';
+        list.querySelectorAll('.autocomplete-item').forEach(function(item) {
+          item.addEventListener('click', function() {
+            input.value = item.textContent;
+            list.style.display = 'none';
+          });
+        });
+      });
+
+      input.addEventListener('blur', function() {
+        setTimeout(function() { list.style.display = 'none'; }, 200);
+      });
+    }
+
+    // =============================================
+    //  KM CALCULATION
+    // =============================================
+
+    function setupKmCalc() {
+      document.getElementById('fKmStart').addEventListener('input', updateKm);
+      document.getElementById('fKmEnd').addEventListener('input', updateKm);
+    }
+
+    function updateKm() {
+      var start = parseFloat(document.getElementById('fKmStart').value) || 0;
+      var end = parseFloat(document.getElementById('fKmEnd').value) || 0;
+      var diff = end - start;
+      if (end && start && diff > 0) {
+        document.getElementById('kmResult').textContent = 'Gefahrene Kilometer: ' + diff + ' km';
+      } else if (end && start) {
+        document.getElementById('kmResult').textContent = 'Gefahrene Kilometer: —';
+      } else {
+        document.getElementById('kmResult').textContent = 'Gefahrene Kilometer: —';
+      }
+    }
+
+    // =============================================
+    //  PHOTO UPLOADS
+    // =============================================
+
+    function setupUploads() {
+      document.getElementById('btnPhoto').addEventListener('click', function() {
+        document.getElementById('inputPhoto').click();
+      });
+      document.getElementById('btnFile').addEventListener('click', function() {
+        document.getElementById('inputFile').click();
+      });
+
+      ['inputPhoto', 'inputFile'].forEach(function(inputId) {
+        var el = document.getElementById(inputId);
+        if (!el) return;
+        el.addEventListener('change', function(e) {
+          Array.from(e.target.files).forEach(function(file) {
+            if (file.size > 5 * 1024 * 1024) {
+              showToast(file.name + ' ist zu gross (max. 5 MB)', 'error');
+              return;
+            }
+            compressImage(file, 1920, 5).then(function(blob) {
+              var reader = new FileReader();
+              reader.onload = function() {
+                photos.push({ dataUrl: reader.result, name: file.name, type: file.type });
+                renderPhotos();
+              };
+              reader.readAsDataURL(blob);
+            });
+          });
+          e.target.value = '';
+        });
+      });
+    }
+
+    function renderPhotos() {
+      var grid = document.getElementById('photoGrid');
+      if (photos.length === 0) { grid.innerHTML = ''; return; }
+      grid.innerHTML = photos.map(function(p, i) {
+        return '<div style="position:relative;">' +
+          '<img src="' + p.dataUrl + '" alt="' + esc(p.name) + '">' +
+          '<button type="button" onclick="removePhoto(' + i + ')" style="position:absolute;top:2px;right:2px;width:24px;height:24px;background:rgba(0,0,0,.6);color:#fff;border:none;border-radius:50%;font-size:14px;cursor:pointer;">&times;</button>' +
+        '</div>';
+      }).join('');
+    }
+
+    function removePhoto(idx) {
+      photos.splice(idx, 1);
+      renderPhotos();
+    }
+
+    // =============================================
+    //  SAVE
+    // =============================================
+
+    document.getElementById('driveForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      console.log('[Drives] Save triggered');
+
+      try {
+        clearWarnings();
+
+        var data = {
+          projectId: document.getElementById('fProject').value,
+          date: document.getElementById('fDate').value,
+          driver: document.getElementById('fDriver').value.trim(),
+          vehicle: document.getElementById('fVehicle').value.trim(),
+          startLocation: document.getElementById('fStart').value.trim(),
+          endLocation: document.getElementById('fEnd').value.trim(),
+          kmStart: parseFloat(document.getElementById('fKmStart').value) || 0,
+          kmEnd: parseFloat(document.getElementById('fKmEnd').value) || 0,
+          purpose: document.getElementById('fPurpose').value,
+          notes: document.getElementById('fNotes').value.trim(),
+          photos: photos.slice()
+        };
+
+        // Add project name for display
+        var proj = data.projectId ? getItemById('projects', data.projectId) : null;
+        data.projectName = proj ? proj.name : '';
+
+        // Validation warnings
+        var hasWarning = false;
+        function warn(id, condition) {
+          if (condition) {
+            document.getElementById(id).classList.add('visible');
+            hasWarning = true;
+          }
+        }
+        warn('wDate', !data.date);
+        warn('wDriver', !data.driver);
+        warn('wVehicle', !data.vehicle);
+        warn('wStart', !data.startLocation);
+        warn('wEnd', !data.endLocation);
+        warn('wKmStart', !data.kmStart);
+        warn('wKmEnd', !data.kmEnd);
+        warn('wPurpose', !data.purpose);
+
+        // Validation error: km end > km start
+        if (data.kmEnd && data.kmStart && data.kmEnd <= data.kmStart) {
+          document.getElementById('eKmEnd').style.display = '';
+          document.getElementById('eKmEnd').classList.add('visible');
+          hasWarning = true;
+        }
+
+        // Date not in the future
+        if (data.date && data.date > new Date().toISOString().split('T')[0]) {
+          showToast('Datum darf nicht in der Zukunft liegen', 'warning');
+        }
+
+        // Save
+        var id = currentId || generateId();
+        saveToLocal('drives', id, data);
+        showToast(hasWarning ? 'Gespeichert (fehlende Pflichtfelder)' : 'Fahrt gespeichert', hasWarning ? 'warning' : 'success');
+
+        currentId = id;
+        history.replaceState(null, '', 'drives.html?id=' + id + (getUrlParam('projectId') ? '&projectId=' + getUrlParam('projectId') : ''));
+        document.getElementById('formTitle').textContent = 'Fahrt bearbeiten';
+        document.getElementById('btnDelete').style.display = '';
+
+        if (isOnline) syncItemToFirebase('drives', id, data);
+      } catch (err) {
+        console.error('[Drives] Save error:', err);
+        showToast('Fehler: ' + err.message, 'error');
+      }
+    });
+
+    // =============================================
+    //  DELETE / BACK
+    // =============================================
+
+    document.getElementById('btnDelete').addEventListener('click', function() {
+      if (!currentId) return;
+      var d = getItemById('drives', currentId);
+      if (softDelete('drives', currentId, d ? (d.startLocation + ' → ' + d.endLocation) : '')) {
+        showToast('Fahrt geloescht', 'success');
+        var urlProjId = getUrlParam('projectId');
+        if (urlProjId) {
+          window.location.href = 'projects.html?id=' + urlProjId;
+        } else {
+          showList();
+        }
+      }
+    });
+
+    // Smart back button
+    (function() {
+      var projId = getUrlParam('projectId');
+      var btn = document.getElementById('btnBack');
+      if (projId) {
+        btn.innerHTML = '&#8592; Zurueck zum Projekt';
+      }
+      btn.addEventListener('click', function() {
+        var pId = getUrlParam('projectId');
+        if (pId) {
+          window.location.href = 'projects.html?id=' + pId;
+        } else {
+          showList();
+        }
+      });
+    })();
+
+    // =============================================
+    //  HELPERS
+    // =============================================
+
+    function esc(str) {
+      var d = document.createElement('div');
+      d.textContent = str || '';
+      return d.innerHTML;
+    }
+  </script>
+</body>
+</html>
