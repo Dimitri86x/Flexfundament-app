@@ -34,6 +34,9 @@
 
   <!-- LIST VIEW -->
   <div id="listView" class="page">
+    <div style="margin-bottom:12px;">
+      <a href="dashboard.html" class="btn-back" style="color:var(--color-primary);font-size:0.9rem;">&#8592; Zurueck zum Dashboard</a>
+    </div>
     <div class="filter-bar">
       <select class="form-select" id="filterProject"><option value="">Alle Projekte</option></select>
       <select class="form-select" id="filterDocType"><option value="">Alle Typen</option></select>
@@ -125,9 +128,16 @@
 
       var editId = getUrlParam('id');
       var isNew = getUrlParam('new');
+      var urlProjectId = getUrlParam('projectId');
       if (editId) openForm(editId);
       else if (isNew) openForm(null);
       else showList();
+
+      // Pre-select project from URL and lock dropdown
+      if (urlProjectId && !editId) {
+        document.getElementById('fProject').value = urlProjectId;
+        document.getElementById('fProject').setAttribute('disabled', 'disabled');
+      }
 
       if (isOnline) {
         syncWithFirebase('documents').then(function() {
@@ -510,7 +520,14 @@
       }
     });
 
-    document.getElementById('btnBack').addEventListener('click', function() { showList(); });
+    document.getElementById('btnBack').addEventListener('click', function() {
+      var projId = getUrlParam('projectId');
+      if (projId) {
+        window.location.href = 'projects.html?id=' + projId;
+      } else {
+        showList();
+      }
+    });
 
     // =============================================
     //  HELPERS

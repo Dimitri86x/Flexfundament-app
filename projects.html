@@ -42,6 +42,9 @@
 
   <!-- ========== LIST VIEW ========== -->
   <div id="listView" class="page">
+    <div style="margin-bottom:12px;">
+      <a href="dashboard.html" class="btn-back" style="color:var(--color-primary);font-size:0.9rem;">&#8592; Zurueck zum Dashboard</a>
+    </div>
     <div class="search-bar">
       <input type="text" class="form-input" id="searchInput" placeholder="Projekt suchen...">
     </div>
@@ -224,6 +227,29 @@
         </div>
       </div>
 
+      <!-- Aktionen (nur bei bestehendem Projekt sichtbar) -->
+      <div class="card" id="projectActions" style="display:none;">
+        <div class="card-title">Aktionen</div>
+        <div class="quick-buttons" style="margin:0;">
+          <a id="actionReport" href="#" class="quick-btn" style="font-size:.85rem;">
+            <span class="quick-btn-icon">&#128221;</span>
+            Einsatzbericht anlegen
+          </a>
+          <a id="actionDocument" href="#" class="quick-btn" style="font-size:.85rem;">
+            <span class="quick-btn-icon">&#128194;</span>
+            Dokument hochladen
+          </a>
+          <a id="actionDrive" href="#" class="quick-btn" style="font-size:.85rem;">
+            <span class="quick-btn-icon">&#128663;</span>
+            Fahrt erfassen
+          </a>
+          <a id="actionCost" href="#" class="quick-btn" style="font-size:.85rem;">
+            <span class="quick-btn-icon">&#128176;</span>
+            Kosten erfassen
+          </a>
+        </div>
+      </div>
+
       <!-- Verknuepfte Datensaetze -->
       <div class="collapsible" id="colLinked">
         <div class="collapsible-header">
@@ -392,12 +418,19 @@
         history.replaceState(null, '', 'projects.html?id=' + id);
         fillForm(p);
         document.getElementById('btnDelete').style.display = '';
+        // Show action buttons with projectId links
+        document.getElementById('projectActions').style.display = '';
+        document.getElementById('actionReport').href = 'reports.html?new=1&projectId=' + id;
+        document.getElementById('actionDocument').href = 'documents.html?new=1&projectId=' + id;
+        document.getElementById('actionDrive').href = 'drives.html?new=1&projectId=' + id;
+        document.getElementById('actionCost').href = 'costs.html?new=1&projectId=' + id;
       } else {
         currentId = null;
         document.getElementById('formTitle').textContent = 'Neues Projekt';
         history.replaceState(null, '', 'projects.html?new=1');
         resetForm();
         document.getElementById('btnDelete').style.display = 'none';
+        document.getElementById('projectActions').style.display = 'none';
       }
       window.scrollTo(0, 0);
     }

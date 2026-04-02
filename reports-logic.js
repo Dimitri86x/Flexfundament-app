@@ -203,7 +203,10 @@ function resetForm() {
     document.getElementById(id).style.display = 'none';
   });
   var projId = getUrlParam('projectId');
-  if (projId) document.getElementById('fProject').value = projId;
+  if (projId) {
+    document.getElementById('fProject').value = projId;
+    document.getElementById('fProject').setAttribute('disabled', 'disabled');
+  }
   gpsLat = null;
   gpsLng = null;
   updateGpsUI();
@@ -538,7 +541,16 @@ document.getElementById('btnDelete').addEventListener('click', function() {
   }
 });
 
-document.getElementById('btnBack').addEventListener('click', function() { showList(); });
+document.getElementById('btnBack').addEventListener('click', function() {
+  var projId = getUrlParam('projectId');
+  if (projId) {
+    window.location.href = 'projects.html?id=' + projId;
+  } else if (currentId) {
+    showList();
+  } else {
+    showList();
+  }
+});
 
 // =============================================
 //  PDF EXPORT
