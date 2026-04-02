@@ -541,16 +541,21 @@ document.getElementById('btnDelete').addEventListener('click', function() {
   }
 });
 
-document.getElementById('btnBack').addEventListener('click', function() {
+// Smart back button: project context or list
+(function() {
   var projId = getUrlParam('projectId');
+  var btn = document.getElementById('btnBack');
   if (projId) {
-    window.location.href = 'projects.html?id=' + projId;
-  } else if (currentId) {
-    showList();
-  } else {
-    showList();
+    btn.innerHTML = '&#8592; Zurueck zum Projekt';
   }
-});
+  btn.addEventListener('click', function() {
+    if (projId) {
+      window.location.href = 'projects.html?id=' + projId;
+    } else {
+      showList();
+    }
+  });
+})();
 
 // =============================================
 //  PDF EXPORT

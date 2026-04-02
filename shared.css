@@ -166,23 +166,25 @@ a {
   font-weight: 600;
 }
 
-/* Back button */
+/* Back button (in-page, below nav) */
 .btn-back {
   display: inline-flex;
   align-items: center;
   gap: var(--spacing-xs);
-  color: rgba(255,255,255,0.9);
-  font-size: 0.875rem;
+  color: var(--color-primary);
+  font-size: 0.9rem;
+  font-weight: 500;
   background: none;
   border: none;
   cursor: pointer;
-  padding: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-sm) var(--spacing-sm) 0;
   min-height: var(--touch-min);
-  min-width: var(--touch-min);
+  text-decoration: none;
 }
 
 .btn-back:hover {
-  color: #fff;
+  color: var(--color-primary-dark, #1565c0);
+  text-decoration: underline;
 }
 
 /* --- Page Container --- */
