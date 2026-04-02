@@ -128,8 +128,28 @@ function openForm(id) {
   gpsLng = null;
   clearWarnings();
 
-  // Handle project context from URL
+  // Handle project context from URL (BEFORE replaceState changes URL)
   var urlProjectId = getUrlParam('projectId');
+
+  if (id) {
+    currentId = id;
+    var r = getItemById('reports', id);
+    if (!r) { showToast('Bericht nicht gefunden', 'error'); showList(); return; }
+    document.getElementById('formTitle').textContent = 'Einsatzbericht bearbeiten';
+    history.replaceState(null, '', 'reports.html?id=' + id + (urlProjectId ? '&projectId=' + urlProjectId : ''));
+    fillForm(r);
+    document.getElementById('btnDelete').style.display = '';
+    document.getElementById('btnPdf').style.display = '';
+  } else {
+    currentId = null;
+    document.getElementById('formTitle').textContent = 'Neuer Einsatzbericht';
+    history.replaceState(null, '', 'reports.html?new=1' + (urlProjectId ? '&projectId=' + urlProjectId : ''));
+    resetForm();
+    document.getElementById('btnDelete').style.display = 'none';
+    document.getElementById('btnPdf').style.display = 'none';
+  }
+
+  // Set project AFTER resetForm (which calls .reset() and clears all fields)
   if (urlProjectId) {
     document.getElementById('fProject').value = urlProjectId;
     document.getElementById('projectDropdownGroup').style.display = 'none';
@@ -141,24 +161,6 @@ function openForm(id) {
   } else {
     document.getElementById('projectDropdownGroup').style.display = '';
     document.getElementById('projectNameDisplay').style.display = 'none';
-  }
-
-  if (id) {
-    currentId = id;
-    var r = getItemById('reports', id);
-    if (!r) { showToast('Bericht nicht gefunden', 'error'); showList(); return; }
-    document.getElementById('formTitle').textContent = 'Einsatzbericht bearbeiten';
-    history.replaceState(null, '', 'reports.html?id=' + id);
-    fillForm(r);
-    document.getElementById('btnDelete').style.display = '';
-    document.getElementById('btnPdf').style.display = '';
-  } else {
-    currentId = null;
-    document.getElementById('formTitle').textContent = 'Neuer Einsatzbericht';
-    history.replaceState(null, '', 'reports.html?new=1');
-    resetForm();
-    document.getElementById('btnDelete').style.display = 'none';
-    document.getElementById('btnPdf').style.display = 'none';
   }
   window.scrollTo(0, 0);
 }
@@ -222,11 +224,6 @@ function resetForm() {
   ['actPullCount','actScrewCount','actMontageCount'].forEach(function(id) {
     document.getElementById(id).style.display = 'none';
   });
-  // projectId from URL is handled in openForm()
-  var projId = getUrlParam('projectId');
-  if (projId) {
-    document.getElementById('fProject').value = projId;
-  }
   gpsLat = null;
   gpsLng = null;
   updateGpsUI();

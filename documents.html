@@ -229,8 +229,28 @@
       pendingFiles = [];
       clearWarnings();
 
-      // Handle project context from URL
+      // Read projectId from URL BEFORE replaceState changes it
       var urlProjectId = getUrlParam('projectId');
+
+      if (id) {
+        currentId = id;
+        isEditMode = true;
+        var d = getItemById('documents', id);
+        if (!d) { showToast('Dokument nicht gefunden', 'error'); showList(); return; }
+        document.getElementById('formTitle').textContent = 'Dokument bearbeiten';
+        history.replaceState(null, '', 'documents.html?id=' + id + (urlProjectId ? '&projectId=' + urlProjectId : ''));
+        fillForm(d);
+        document.getElementById('btnDelete').style.display = '';
+      } else {
+        currentId = null;
+        isEditMode = false;
+        document.getElementById('formTitle').textContent = 'Dokumente hochladen';
+        history.replaceState(null, '', 'documents.html?new=1' + (urlProjectId ? '&projectId=' + urlProjectId : ''));
+        resetForm();
+        document.getElementById('btnDelete').style.display = 'none';
+      }
+
+      // Set project AFTER resetForm (which calls .reset() and clears all fields)
       if (urlProjectId) {
         document.getElementById('fProject').value = urlProjectId;
         document.getElementById('projectDropdownGroup').style.display = 'none';
@@ -242,24 +262,6 @@
       } else {
         document.getElementById('projectDropdownGroup').style.display = '';
         document.getElementById('projectNameDisplay').style.display = 'none';
-      }
-
-      if (id) {
-        currentId = id;
-        isEditMode = true;
-        var d = getItemById('documents', id);
-        if (!d) { showToast('Dokument nicht gefunden', 'error'); showList(); return; }
-        document.getElementById('formTitle').textContent = 'Dokument bearbeiten';
-        history.replaceState(null, '', 'documents.html?id=' + id);
-        fillForm(d);
-        document.getElementById('btnDelete').style.display = '';
-      } else {
-        currentId = null;
-        isEditMode = false;
-        document.getElementById('formTitle').textContent = 'Dokumente hochladen';
-        history.replaceState(null, '', 'documents.html?new=1');
-        resetForm();
-        document.getElementById('btnDelete').style.display = 'none';
       }
       window.scrollTo(0, 0);
     }
