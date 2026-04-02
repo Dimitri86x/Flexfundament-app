@@ -12,6 +12,7 @@ var gpsLng = null;
 
 // --- Init ---
 initApp(function(user) {
+  console.log('[Reports] Init start');
   renderNav('reports');
   initCollapsibles();
   setupTags();
@@ -20,6 +21,10 @@ initApp(function(user) {
   setupAllUploads();
   setupGps();
   populateProjectDropdowns();
+
+  var urlProjectId = getUrlParam('projectId');
+  console.log('[Reports] projectId from URL:', urlProjectId || '(none)');
+  console.log('[Reports] Projects loaded:', getActiveItems('projects').length);
 
   var editId = getUrlParam('id');
   var isNew = getUrlParam('new');
@@ -342,8 +347,10 @@ function setupAllUploads() {
   });
 
   // Obstacle photos
-  ['inputObsCam','inputObsGal','inputObsFile'].forEach(function(id) {
-    document.getElementById(id).addEventListener('change', function(e) {
+  ['inputObsCam','inputObsFile'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (!el) { console.warn('[Reports] Upload input not found:', id); return; }
+    el.addEventListener('change', function(e) {
       handleFiles(e, function(file) {
         obstaclePhotos.push(file);
         renderObstacleGrid();
@@ -352,8 +359,10 @@ function setupAllUploads() {
   });
 
   // Report photos
-  ['inputPhotoCam','inputPhotoGal','inputPhotoFile'].forEach(function(id) {
-    document.getElementById(id).addEventListener('change', function(e) {
+  ['inputPhotoCam','inputPhotoFile'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (!el) { console.warn('[Reports] Upload input not found:', id); return; }
+    el.addEventListener('change', function(e) {
       handleFiles(e, function(file) {
         file.description = '';
         reportPhotos.push(file);
