@@ -69,11 +69,12 @@
       <!-- Einsatzdaten -->
       <div class="card">
         <div class="card-title">Einsatzdaten</div>
-        <div class="form-group">
+        <div class="form-group" id="projectDropdownGroup">
           <label class="form-label">Projekt <span class="required">*</span></label>
           <select class="form-select" id="fProject" required><option value="">Bitte waehlen</option></select>
           <div class="form-warning" id="wProject">Bitte Projekt waehlen</div>
         </div>
+        <div id="projectNameDisplay" style="display:none;padding:8px 0;font-weight:600;font-size:0.95rem;color:var(--color-primary);"></div>
         <div class="form-group">
           <label class="form-label">Datum <span class="required">*</span></label>
           <input type="date" class="form-input" id="fDate" required>
@@ -87,13 +88,8 @@
           <div class="autocomplete-list" id="workerAutocomplete" style="display:none;"></div>
           <div class="form-warning" id="wWorkers">Bitte mindestens einen Mitarbeiter eingeben</div>
         </div>
-        <div class="form-group">
-          <label class="form-label">Status</label>
-          <select class="form-select" id="fStatus">
-            <option value="entwurf">Entwurf</option>
-            <option value="abgeschlossen">Abgeschlossen</option>
-          </select>
-        </div>
+        <!-- Status wird automatisch gesetzt: entwurf bei Erstellung, abgeschlossen bei PDF-Export -->
+        <input type="hidden" id="fStatus" value="entwurf">
       </div>
 
       <!-- Standort -->
@@ -183,12 +179,10 @@
             <div class="form-group">
               <label class="form-label">Foto</label>
               <div class="upload-buttons">
-                <button type="button" class="btn btn-secondary btn-upload" data-target="inputObsCam">&#128247; Kamera</button>
-                <button type="button" class="btn btn-secondary btn-upload" data-target="inputObsGal">&#128444; Galerie</button>
+                <button type="button" class="btn btn-secondary btn-upload" data-target="inputObsCam">&#128247; Foto</button>
                 <button type="button" class="btn btn-secondary btn-upload" data-target="inputObsFile">&#128196; Datei</button>
                 <input type="file" id="inputObsCam" accept="image/*" capture="environment">
-                <input type="file" id="inputObsGal" accept="image/*" multiple>
-                <input type="file" id="inputObsFile" accept="image/*,application/pdf,.pdf" multiple>
+                <input type="file" id="inputObsFile" accept="*/*" multiple>
               </div>
               <div class="photo-grid" id="obstaclePhotoGrid"></div>
             </div>
@@ -216,12 +210,10 @@
         <div class="collapsible-header">Fotos <span class="collapsible-arrow">&#9660;</span></div>
         <div class="collapsible-body">
           <div class="upload-buttons">
-            <button type="button" class="btn btn-secondary btn-upload" data-target="inputPhotoCam">&#128247; Kamera</button>
-            <button type="button" class="btn btn-secondary btn-upload" data-target="inputPhotoGal">&#128444; Galerie</button>
+            <button type="button" class="btn btn-secondary btn-upload" data-target="inputPhotoCam">&#128247; Foto</button>
             <button type="button" class="btn btn-secondary btn-upload" data-target="inputPhotoFile">&#128196; Datei</button>
             <input type="file" id="inputPhotoCam" accept="image/*" capture="environment">
-            <input type="file" id="inputPhotoGal" accept="image/*" multiple>
-            <input type="file" id="inputPhotoFile" accept="image/*,application/pdf,.pdf" multiple>
+            <input type="file" id="inputPhotoFile" accept="*/*" multiple>
           </div>
           <div id="photosList" style="margin-top:8px;"></div>
         </div>

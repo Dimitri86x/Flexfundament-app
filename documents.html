@@ -50,11 +50,12 @@
 
     <form id="docForm" novalidate>
       <div class="card">
-        <div class="form-group">
+        <div class="form-group" id="projectDropdownGroup">
           <label class="form-label">Projekt <span class="required">*</span></label>
           <select class="form-select" id="fProject" required><option value="">Bitte waehlen</option></select>
           <div class="form-warning" id="wProject">Bitte Projekt waehlen</div>
         </div>
+        <div id="projectNameDisplay" style="display:none;padding:8px 0;font-weight:600;font-size:0.95rem;color:var(--color-primary);"></div>
 
         <div class="form-group">
           <label class="form-label">Dokumenttyp <span class="required">*</span></label>
@@ -76,12 +77,9 @@
         <div class="form-group">
           <label class="form-label">Dateien hochladen <span class="required">*</span></label>
           <div class="upload-buttons">
-            <button type="button" class="btn btn-secondary" id="btnCamera">&#128247; Kamera</button>
-            <button type="button" class="btn btn-secondary" id="btnGallery">&#128444; Galerie</button>
+            <button type="button" class="btn btn-secondary" id="btnCamera">&#128247; Foto</button>
             <button type="button" class="btn btn-secondary" id="btnFile">&#128196; Datei</button>
-            <button type="button" class="btn btn-secondary" id="btnDrive">&#9729; Drive</button>
             <input type="file" id="inputCamera" accept="image/*" capture="environment">
-            <input type="file" id="inputGallery" accept="image/*" multiple>
             <input type="file" id="inputFile" accept="*/*" multiple>
           </div>
           <div class="file-list" id="fileList"></div>
@@ -129,10 +127,14 @@
       else if (isNew) openForm(null);
       else showList();
 
-      // Pre-select project from URL and lock dropdown
+      // Pre-select project from URL and show name instead of dropdown
       if (urlProjectId && !editId) {
         document.getElementById('fProject').value = urlProjectId;
-        document.getElementById('fProject').setAttribute('disabled', 'disabled');
+        document.getElementById('projectDropdownGroup').style.display = 'none';
+        var proj = getItemById('projects', urlProjectId);
+        var nameEl = document.getElementById('projectNameDisplay');
+        nameEl.textContent = 'Projekt: ' + (proj ? (proj.name || 'Ohne Bezeichnung') : urlProjectId);
+        nameEl.style.display = '';
       }
 
       if (isOnline) {
@@ -190,7 +192,7 @@
       container.innerHTML = filtered.map(function(d) {
         var proj = d.projectId ? getItemById('projects', d.projectId) : null;
         var projName = proj ? proj.name : '';
-        var isImage = d.fileType === 'image';
+        var isImage = (d.fileType || '').indexOf('image') !== -1 || /\.(jpg|jpeg|png|gif|webp|heic)$/i.test(d.fileName || '');
         var thumb = isImage && d.fileDataUrl
           ? '<div class="doc-card-thumb"><img src="' + d.fileDataUrl + '" alt=""></div>'
           : '<div class="doc-card-thumb">&#128196;<br>PDF</div>';
@@ -285,13 +287,9 @@
 
     function setupUploads() {
       document.getElementById('btnCamera').addEventListener('click', function() { document.getElementById('inputCamera').click(); });
-      document.getElementById('btnGallery').addEventListener('click', function() { document.getElementById('inputGallery').click(); });
       document.getElementById('btnFile').addEventListener('click', function() { document.getElementById('inputFile').click(); });
-      document.getElementById('btnDrive').addEventListener('click', function() {
-        showToast('Google Drive kommt in Phase 2', 'info');
-      });
 
-      ['inputCamera','inputGallery','inputFile'].forEach(function(inputId) {
+      ['inputCamera','inputFile'].forEach(function(inputId) {
         document.getElementById(inputId).addEventListener('change', function(e) {
           var files = Array.from(e.target.files);
           var remaining = files.length;
@@ -484,15 +482,19 @@
           showToast(count + ' Dokument' + (count > 1 ? 'e' : '') + ' gespeichert' +
             (hasWarning ? ' (fehlende Pflichtfelder)' : ''), hasWarning ? 'warning' : 'success');
 
-          // If single file, open it for editing
-          if (savedIds.length === 1) {
+          // After save: return to project if came from project, otherwise stay/list
+          var urlProjId = getUrlParam('projectId');
+          if (urlProjId) {
+            showToast(savedIds.length + ' Dokument' + (savedIds.length > 1 ? 'e' : '') + ' gespeichert', 'success');
+            window.location.href = 'projects.html?id=' + urlProjId;
+            return;
+          } else if (savedIds.length === 1) {
             currentId = savedIds[0];
             isEditMode = true;
             history.replaceState(null, '', 'documents.html?id=' + currentId);
             document.getElementById('formTitle').textContent = 'Dokument bearbeiten';
             document.getElementById('btnDelete').style.display = '';
           } else {
-            // Multiple files: go back to list
             showList();
             return;
           }
@@ -512,7 +514,12 @@
       var d = getItemById('documents', currentId);
       if (softDelete('documents', currentId, d ? (d.fileName || 'Dokument') : '')) {
         showToast('Dokument geloescht', 'success');
-        showList();
+        var urlProjId = getUrlParam('projectId');
+        if (urlProjId) {
+          window.location.href = 'projects.html?id=' + urlProjId;
+        } else {
+          showList();
+        }
       }
     });
 
@@ -557,10 +564,12 @@
       }
 
       // Images: show in fullscreen overlay
-      if (d.fileType === 'image') {
+      var isImage = (d.fileType || '').indexOf('image') !== -1 || /\.(jpg|jpeg|png|gif|webp|heic)$/i.test(d.fileName || '');
+      var isPdf = (d.fileType || '').indexOf('pdf') !== -1 || /\.pdf$/i.test(d.fileName || '');
+      if (isImage) {
         showImageOverlay(url);
       // PDFs: open in new tab, fallback to redirect
-      } else if (d.fileType === 'pdf' || (d.fileName && d.fileName.toLowerCase().endsWith('.pdf'))) {
+      } else if (isPdf) {
         var w = window.open(url, '_blank');
         if (!w) { window.location.href = url; }
       // Other files: open in new tab

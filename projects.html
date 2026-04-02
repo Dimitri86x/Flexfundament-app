@@ -635,7 +635,7 @@
         elDocs.innerHTML = 'Noch keine Dokumente';
       } else {
         elDocs.innerHTML = docs.map(function(d) {
-          var isImage = d.fileType === 'image';
+          var isImage = (d.fileType || '').indexOf('image') !== -1 || /\.(jpg|jpeg|png|gif|webp|heic)$/i.test(d.fileName || '');
           var icon = isImage ? '&#128444;' : '&#128196;';
           var sizeStr = d.fileSize ? ' (' + formatFileSize(d.fileSize) + ')' : '';
           var dateStr = d.date ? ' — ' + formatDate(d.date) : '';
@@ -782,10 +782,12 @@
       if (!url) { showToast('Datei nicht verfuegbar', 'error'); return; }
 
       // Images: show in fullscreen overlay
-      if (d.fileType === 'image') {
+      var isImage = (d.fileType || '').indexOf('image') !== -1 || /\.(jpg|jpeg|png|gif|webp|heic)$/i.test(d.fileName || '');
+      var isPdf = (d.fileType || '').indexOf('pdf') !== -1 || /\.pdf$/i.test(d.fileName || '');
+      if (isImage) {
         showImageOverlay(url);
       // PDFs: open in new tab, fallback to redirect
-      } else if (d.fileType === 'pdf' || (d.fileName && d.fileName.toLowerCase().endsWith('.pdf'))) {
+      } else if (isPdf) {
         var w = window.open(url, '_blank');
         if (!w) { window.location.href = url; }
       // Other files: open in new tab

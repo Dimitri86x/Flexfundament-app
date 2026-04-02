@@ -205,7 +205,12 @@ function resetForm() {
   var projId = getUrlParam('projectId');
   if (projId) {
     document.getElementById('fProject').value = projId;
-    document.getElementById('fProject').setAttribute('disabled', 'disabled');
+    // Hide dropdown, show project name as text
+    document.getElementById('projectDropdownGroup').style.display = 'none';
+    var proj = getItemById('projects', projId);
+    var nameEl = document.getElementById('projectNameDisplay');
+    nameEl.textContent = 'Projekt: ' + (proj ? (proj.name || 'Ohne Bezeichnung') : projId);
+    nameEl.style.display = '';
   }
   gpsLat = null;
   gpsLng = null;
@@ -718,7 +723,14 @@ document.getElementById('btnPdf').addEventListener('click', function() {
     var filename = 'Einsatzbericht_' + (r.date || 'ohne-datum') + '.pdf';
     console.log('[PDF] Saving as ' + filename);
     doc.save(filename);
-    showToast('PDF erstellt: ' + filename, 'success');
+
+    // Auto-set status to abgeschlossen after PDF export
+    r.status = 'abgeschlossen';
+    document.getElementById('fStatus').value = 'abgeschlossen';
+    saveToLocal('reports', currentId, r);
+    if (isOnline) syncItemToFirebase('reports', currentId, r);
+
+    showToast('PDF erstellt — Status: abgeschlossen', 'success');
 
   } catch (pdfErr) {
     console.error('[PDF] Error creating PDF:', pdfErr);
