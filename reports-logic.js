@@ -342,7 +342,9 @@ function setupObstacleToggle() {
 function setupAllUploads() {
   document.querySelectorAll('.btn-upload').forEach(function(btn) {
     btn.addEventListener('click', function() {
-      document.getElementById(btn.getAttribute('data-target')).click();
+      var target = document.getElementById(btn.getAttribute('data-target'));
+      if (target) target.click();
+      else console.warn('[Reports] Upload target not found:', btn.getAttribute('data-target'));
     });
   });
 
