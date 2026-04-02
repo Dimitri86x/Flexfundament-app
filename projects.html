@@ -606,11 +606,19 @@
         elDocs.innerHTML = 'Noch keine Dokumente';
       } else {
         elDocs.innerHTML = docs.map(function(d) {
-          var label = esc(d.fileName || 'Dokument');
-          var typeStr = d.docType ? ' (' + esc(d.docType) + ')' : '';
+          var isImage = d.fileType === 'image';
+          var icon = isImage ? '&#128444;' : '&#128196;';
+          var sizeStr = d.fileSize ? ' (' + formatFileSize(d.fileSize) + ')' : '';
           var dateStr = d.date ? ' — ' + formatDate(d.date) : '';
-          return '<a href="documents.html?id=' + d.id + '" style="display:block;padding:6px 0;border-bottom:1px solid var(--color-border);">' +
-            label + typeStr + dateStr + '</a>';
+          var typeStr = d.docType ? '<span class="text-secondary"> ' + esc(d.docType) + '</span>' : '';
+          return '<div style="padding:8px 0;border-bottom:1px solid var(--color-border);">' +
+            '<div style="font-size:.85rem;">' + icon + ' ' + esc(d.fileName || 'Dokument') + sizeStr + typeStr + dateStr + '</div>' +
+            '<div style="display:flex;gap:6px;margin-top:4px;">' +
+              '<button onclick="openDocViewer(\'' + d.id + '\')" class="btn btn-secondary" style="font-size:.7rem;padding:4px 8px;min-height:32px;">Anzeigen</button>' +
+              '<button onclick="downloadDoc(\'' + d.id + '\')" class="btn btn-secondary" style="font-size:.7rem;padding:4px 8px;min-height:32px;">Herunterladen</button>' +
+              '<a href="documents.html?id=' + d.id + '" class="btn btn-secondary" style="font-size:.7rem;padding:4px 8px;min-height:32px;">Bearbeiten</a>' +
+            '</div>' +
+          '</div>';
         }).join('');
       }
 
@@ -725,6 +733,48 @@
       var d = document.createElement('div');
       d.textContent = str || '';
       return d.innerHTML;
+    }
+
+    function formatFileSize(bytes) {
+      if (!bytes) return '';
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+
+    function openDocViewer(docId) {
+      var d = getItemById('documents', docId);
+      if (!d) { showToast('Dokument nicht gefunden', 'error'); return; }
+      var dataUrl = d.fileDataUrl || localStorage.getItem('offline_doc_' + docId);
+      var url = dataUrl || d.downloadUrl;
+      if (!url) { showToast('Datei nicht verfuegbar', 'error'); return; }
+      if (d.fileType === 'image' && dataUrl) {
+        showImageOverlay(dataUrl);
+      } else {
+        window.open(url, '_blank');
+      }
+    }
+
+    function downloadDoc(docId) {
+      var d = getItemById('documents', docId);
+      if (!d) { showToast('Dokument nicht gefunden', 'error'); return; }
+      var dataUrl = d.fileDataUrl || localStorage.getItem('offline_doc_' + docId);
+      var url = dataUrl || d.downloadUrl;
+      if (!url) { showToast('Datei nicht verfuegbar', 'error'); return; }
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = d.fileName || 'download';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+
+    function showImageOverlay(src) {
+      var overlay = document.createElement('div');
+      overlay.style.cssText = 'position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.9);display:flex;align-items:center;justify-content:center;cursor:pointer;';
+      overlay.innerHTML = '<img src="' + src + '" style="max-width:95vw;max-height:95vh;object-fit:contain;border-radius:8px;">';
+      overlay.addEventListener('click', function() { document.body.removeChild(overlay); });
+      document.body.appendChild(overlay);
     }
   </script>
 </body>

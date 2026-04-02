@@ -19,6 +19,11 @@
     .file-item-thumb{width:48px;height:48px;border-radius:var(--radius-sm);overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:#f5f5f5}
     .file-item-thumb img{width:100%;height:100%;object-fit:cover}
     .file-item-pdf{font-size:1.5rem;color:var(--color-text-secondary)}
+    .doc-actions{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
+    .doc-actions .btn{font-size:.7rem;padding:4px 8px;min-height:32px}
+    .doc-overlay{position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.9);display:flex;align-items:center;justify-content:center;cursor:pointer}
+    .doc-overlay img{max-width:95vw;max-height:95vh;object-fit:contain;border-radius:8px}
+    .offline-saved{color:var(--color-success);font-size:.75rem;display:inline-flex;align-items:center;gap:2px}
     .file-item-info{flex:1;min-width:0}
     .file-item-name{font-size:.8rem;word-break:break-all}
     .file-item-size{font-size:.7rem;color:var(--color-text-secondary)}
@@ -183,21 +188,32 @@
         var thumb = isImage && d.fileDataUrl
           ? '<div class="doc-card-thumb"><img src="' + d.fileDataUrl + '" alt=""></div>'
           : '<div class="doc-card-thumb">&#128196;<br>PDF</div>';
+        var sizeStr = d.fileSize ? formatSize(d.fileSize) : '';
+        var offlineKey = 'offline_doc_' + d.id;
+        var isSavedOffline = !!localStorage.getItem(offlineKey);
+        var offlineLabel = isSavedOffline
+          ? '<span class="offline-saved">&#10003; Offline</span>'
+          : '';
 
-        return '<div class="card card-clickable" data-id="' + d.id + '" style="display:flex;gap:12px;align-items:center;">' +
+        return '<div class="card" style="display:flex;gap:12px;align-items:flex-start;">' +
           thumb +
           '<div style="min-width:0;flex:1;">' +
             '<div class="card-title" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(d.fileName || 'Dokument') + '</div>' +
             '<div class="card-subtitle">' + esc(d.docType || '') +
-              (projName ? ' &middot; ' + esc(projName) : '') + '</div>' +
+              (projName ? ' &middot; ' + esc(projName) : '') +
+              (sizeStr ? ' &middot; ' + sizeStr : '') + '</div>' +
             (d.date ? '<div class="card-subtitle">' + formatDate(d.date) + '</div>' : '') +
+            offlineLabel +
+            '<div class="doc-actions">' +
+              '<button class="btn btn-secondary" onclick="viewDoc(\'' + d.id + '\')">Anzeigen</button>' +
+              '<button class="btn btn-secondary" onclick="downloadDoc(\'' + d.id + '\')">Download</button>' +
+              '<button class="btn btn-secondary" onclick="toggleOffline(\'' + d.id + '\',this)" id="offBtn_' + d.id + '">' +
+                (isSavedOffline ? '&#10003; Offline' : '&#128229; Offline speichern') + '</button>' +
+              '<button class="btn btn-secondary" onclick="openForm(\'' + d.id + '\')">Bearbeiten</button>' +
+            '</div>' +
           '</div>' +
         '</div>';
       }).join('');
-
-      container.querySelectorAll('[data-id]').forEach(function(card) {
-        card.addEventListener('click', function() { openForm(card.getAttribute('data-id')); });
-      });
     }
 
     document.getElementById('filterProject').addEventListener('change', renderList);
@@ -495,6 +511,136 @@
     });
 
     document.getElementById('btnBack').addEventListener('click', function() { showList(); });
+
+    // =============================================
+    //  HELPERS
+    // =============================================
+
+    // =============================================
+    //  VIEW / DOWNLOAD / OFFLINE
+    // =============================================
+
+    function viewDoc(docId) {
+      var d = getItemById('documents', docId);
+      if (!d) { showToast('Dokument nicht gefunden', 'error'); return; }
+
+      // Try local data first, then offline cache, then cloud URL
+      var dataUrl = d.fileDataUrl || localStorage.getItem('offline_doc_' + docId);
+      var url = dataUrl || d.downloadUrl;
+
+      if (!url) {
+        if (!isOnline) showToast('Offline — Datei nicht lokal gespeichert', 'error');
+        else showToast('Datei nicht verfuegbar', 'error');
+        return;
+      }
+
+      if (d.fileType === 'image' && dataUrl) {
+        showImageOverlay(dataUrl);
+      } else {
+        window.open(url, '_blank');
+      }
+    }
+
+    function downloadDoc(docId) {
+      var d = getItemById('documents', docId);
+      if (!d) { showToast('Dokument nicht gefunden', 'error'); return; }
+
+      var dataUrl = d.fileDataUrl || localStorage.getItem('offline_doc_' + docId);
+      var url = dataUrl || d.downloadUrl;
+      if (!url) {
+        showToast('Datei nicht verfuegbar' + (!isOnline ? ' (offline)' : ''), 'error');
+        return;
+      }
+
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = d.fileName || 'download';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+
+    function toggleOffline(docId, btn) {
+      var d = getItemById('documents', docId);
+      if (!d) return;
+
+      var offlineKey = 'offline_doc_' + docId;
+      var existing = localStorage.getItem(offlineKey);
+
+      if (existing) {
+        // Remove offline cache
+        localStorage.removeItem(offlineKey);
+        btn.innerHTML = '&#128229; Offline speichern';
+        showToast('Offline-Kopie entfernt', 'success');
+        renderList();
+        return;
+      }
+
+      // Save offline
+      var dataUrl = d.fileDataUrl;
+      if (!dataUrl && d.downloadUrl && isOnline) {
+        // Fetch from cloud and convert to base64
+        btn.textContent = 'Lade...';
+        btn.disabled = true;
+        fetch(d.downloadUrl).then(function(resp) { return resp.blob(); })
+          .then(function(blob) {
+            if (blob.size > 2 * 1024 * 1024) {
+              showToast('Datei zu gross fuer Offline-Speicherung (max 2 MB)', 'error');
+              btn.innerHTML = '&#128229; Offline speichern';
+              btn.disabled = false;
+              return;
+            }
+            var reader = new FileReader();
+            reader.onload = function() {
+              try {
+                localStorage.setItem(offlineKey, reader.result);
+                btn.innerHTML = '&#10003; Offline';
+                showToast('Offline gespeichert', 'success');
+                renderList();
+              } catch (e) {
+                showToast('Speicher voll — kann nicht offline speichern', 'error');
+                btn.innerHTML = '&#128229; Offline speichern';
+              }
+              btn.disabled = false;
+            };
+            reader.readAsDataURL(blob);
+          })
+          .catch(function() {
+            showToast('Download fehlgeschlagen', 'error');
+            btn.innerHTML = '&#128229; Offline speichern';
+            btn.disabled = false;
+          });
+        return;
+      }
+
+      if (!dataUrl) {
+        showToast('Keine Datei zum Offline-Speichern vorhanden', 'error');
+        return;
+      }
+
+      // Check size (~2 MB limit for base64 in localStorage)
+      if (dataUrl.length > 2 * 1024 * 1024) {
+        showToast('Datei zu gross fuer Offline-Speicherung (max 2 MB)', 'error');
+        return;
+      }
+
+      try {
+        localStorage.setItem(offlineKey, dataUrl);
+        btn.innerHTML = '&#10003; Offline';
+        showToast('Offline gespeichert', 'success');
+        renderList();
+      } catch (e) {
+        showToast('Speicher voll — kann nicht offline speichern', 'error');
+      }
+    }
+
+    function showImageOverlay(src) {
+      var overlay = document.createElement('div');
+      overlay.className = 'doc-overlay';
+      overlay.innerHTML = '<img src="' + src + '" alt="Dokument">';
+      overlay.addEventListener('click', function() { document.body.removeChild(overlay); });
+      document.body.appendChild(overlay);
+    }
 
     // =============================================
     //  HELPERS
