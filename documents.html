@@ -551,28 +551,48 @@
       var d = getItemById('documents', docId);
       if (!d) { showToast('Dokument nicht gefunden', 'error'); return; }
 
-      // Try local data first, then offline cache, then cloud URL
       var dataUrl = d.fileDataUrl || localStorage.getItem('offline_doc_' + docId);
       var url = dataUrl || d.downloadUrl;
 
-      console.log('Öffne Dokument:', docId, 'URL:', url ? url.substring(0, 80) + '...' : 'keine', 'Dateityp:', d.fileType);
+      console.log('[Docs] Anzeigen clicked, id:', docId);
+      console.log('[Docs] downloadUrl:', d.downloadUrl || '(leer)');
+      console.log('[Docs] fileDataUrl:', d.fileDataUrl ? d.fileDataUrl.substring(0, 50) + '...' : '(leer)');
+      console.log('[Docs] resolved URL:', url ? url.substring(0, 80) + '...' : '(keine)');
+      console.log('[Docs] fileType:', d.fileType, 'fileName:', d.fileName);
 
       if (!url) {
         if (!isOnline) showToast('Offline — Datei nicht lokal gespeichert', 'error');
-        else showToast('Datei nicht verfuegbar', 'error');
+        else showToast('Keine Datei verfuegbar', 'error');
         return;
       }
 
-      // Images: show in fullscreen overlay
       var isImage = (d.fileType || '').indexOf('image') !== -1 || /\.(jpg|jpeg|png|gif|webp|heic)$/i.test(d.fileName || '');
       var isPdf = (d.fileType || '').indexOf('pdf') !== -1 || /\.pdf$/i.test(d.fileName || '');
+
       if (isImage) {
         showImageOverlay(url);
-      // PDFs: open in new tab, fallback to redirect
       } else if (isPdf) {
-        var w = window.open(url, '_blank');
-        if (!w) { window.location.href = url; }
-      // Other files: open in new tab
+        if (url.startsWith('http')) {
+          var w = window.open(url, '_blank');
+          if (!w) {
+            var a = document.createElement('a');
+            a.href = url;
+            a.target = '_blank';
+            a.rel = 'noopener';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+          }
+        } else if (url.startsWith('data:')) {
+          var w = window.open('');
+          if (w) {
+            w.document.write('<html><head><title>PDF</title></head><body style="margin:0;">' +
+              '<iframe src="' + url + '" style="width:100%;height:100%;border:none;"></iframe></body></html>');
+            w.document.close();
+          } else {
+            window.location.href = url;
+          }
+        }
       } else {
         var w = window.open(url, '_blank');
         if (!w) { window.location.href = url; }

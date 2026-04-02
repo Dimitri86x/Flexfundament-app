@@ -624,7 +624,7 @@
             (r.workers && r.workers.length ? ' — ' + esc(r.workers.join(', ')) : '');
           var status = r.status || 'entwurf';
           var badgeClass = status === 'abgeschlossen' ? 'badge-abgeschlossen' : 'badge-entwurf';
-          return '<a href="reports.html?id=' + r.id + '" style="display:block;padding:6px 0;border-bottom:1px solid var(--color-border);">' +
+          return '<a href="reports.html?id=' + r.id + '&projectId=' + projectId + '" style="display:block;padding:6px 0;border-bottom:1px solid var(--color-border);">' +
             esc(label) + ' <span class="badge ' + badgeClass + '">' + esc(status) + '</span></a>';
         }).join('');
       }
@@ -645,7 +645,7 @@
             '<div style="display:flex;gap:6px;margin-top:4px;">' +
               '<button onclick="openDocViewer(\'' + d.id + '\')" class="btn btn-secondary" style="font-size:.7rem;padding:4px 8px;min-height:32px;">Anzeigen</button>' +
               '<button onclick="downloadDoc(\'' + d.id + '\')" class="btn btn-secondary" style="font-size:.7rem;padding:4px 8px;min-height:32px;">Herunterladen</button>' +
-              '<a href="documents.html?id=' + d.id + '" class="btn btn-secondary" style="font-size:.7rem;padding:4px 8px;min-height:32px;">Bearbeiten</a>' +
+              '<a href="documents.html?id=' + d.id + '&projectId=' + projectId + '" class="btn btn-secondary" style="font-size:.7rem;padding:4px 8px;min-height:32px;">Bearbeiten</a>' +
             '</div>' +
           '</div>';
         }).join('');
@@ -777,20 +777,44 @@
       var dataUrl = d.fileDataUrl || localStorage.getItem('offline_doc_' + docId);
       var url = dataUrl || d.downloadUrl;
 
-      console.log('Öffne Dokument:', docId, 'URL:', url ? url.substring(0, 80) + '...' : 'keine', 'Dateityp:', d.fileType);
+      console.log('[Docs] Anzeigen clicked, id:', docId);
+      console.log('[Docs] downloadUrl:', d.downloadUrl || '(leer)');
+      console.log('[Docs] fileDataUrl:', d.fileDataUrl ? d.fileDataUrl.substring(0, 50) + '...' : '(leer)');
+      console.log('[Docs] resolved URL:', url ? url.substring(0, 80) + '...' : '(keine)');
+      console.log('[Docs] fileType:', d.fileType, 'fileName:', d.fileName);
 
-      if (!url) { showToast('Datei nicht verfuegbar', 'error'); return; }
+      if (!url) { showToast('Keine Datei verfuegbar', 'error'); return; }
 
-      // Images: show in fullscreen overlay
       var isImage = (d.fileType || '').indexOf('image') !== -1 || /\.(jpg|jpeg|png|gif|webp|heic)$/i.test(d.fileName || '');
       var isPdf = (d.fileType || '').indexOf('pdf') !== -1 || /\.pdf$/i.test(d.fileName || '');
+
       if (isImage) {
         showImageOverlay(url);
-      // PDFs: open in new tab, fallback to redirect
       } else if (isPdf) {
-        var w = window.open(url, '_blank');
-        if (!w) { window.location.href = url; }
-      // Other files: open in new tab
+        if (url.startsWith('http')) {
+          // Firebase Storage URL — open in new tab
+          var w = window.open(url, '_blank');
+          if (!w) {
+            // Popup blocked (iOS Safari etc.) — use link click
+            var a = document.createElement('a');
+            a.href = url;
+            a.target = '_blank';
+            a.rel = 'noopener';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+          }
+        } else if (url.startsWith('data:')) {
+          // Base64 PDF — embed in iframe
+          var w = window.open('');
+          if (w) {
+            w.document.write('<html><head><title>PDF</title></head><body style="margin:0;">' +
+              '<iframe src="' + url + '" style="width:100%;height:100%;border:none;"></iframe></body></html>');
+            w.document.close();
+          } else {
+            window.location.href = url;
+          }
+        }
       } else {
         var w = window.open(url, '_blank');
         if (!w) { window.location.href = url; }
