@@ -14,22 +14,22 @@
     .upload-buttons input[type="file"]{display:none}
     .doc-card-thumb{width:48px;height:48px;border-radius:var(--radius-sm);overflow:hidden;border:1px solid var(--color-border);flex-shrink:0;display:flex;align-items:center;justify-content:center;background:#f5f5f5;font-size:.6rem;text-align:center;color:var(--color-text-secondary)}
     .doc-card-thumb img{width:100%;height:100%;object-fit:cover}
-    .file-list{margin-top:8px;display:flex;flex-direction:column;gap:8px}
-    .file-item{display:flex;gap:8px;padding:8px;border:1px solid var(--color-border);border-radius:var(--radius);flex-wrap:wrap;align-items:flex-start}
-    .file-item-thumb{width:48px;height:48px;border-radius:var(--radius-sm);overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:#f5f5f5}
-    .file-item-thumb img{width:100%;height:100%;object-fit:cover}
-    .file-item-pdf{font-size:1.5rem;color:var(--color-text-secondary)}
-    .file-item-fields{width:100%;display:flex;flex-direction:column;gap:4px;margin-top:4px}
-    .file-item-fields select,.file-item-fields input{font-size:.8rem;padding:6px 8px;border:1px solid var(--color-border);border-radius:var(--radius-sm)}
     .doc-actions{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
     .doc-actions .btn{font-size:.7rem;padding:4px 8px;min-height:32px}
     .doc-overlay{position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.9);display:flex;align-items:center;justify-content:center;cursor:pointer}
     .doc-overlay img{max-width:95vw;max-height:95vh;object-fit:contain;border-radius:8px}
     .offline-saved{color:var(--color-success);font-size:.75rem;display:inline-flex;align-items:center;gap:2px}
-    .file-item-info{flex:1;min-width:0}
-    .file-item-name{font-size:.8rem;word-break:break-all}
-    .file-item-size{font-size:.7rem;color:var(--color-text-secondary)}
-    .file-item-remove{width:32px;height:32px;border:none;background:none;color:var(--color-error);font-size:1.2rem;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+    .position-card{border:1px solid var(--color-border);border-radius:var(--radius);padding:12px;margin-bottom:12px;position:relative}
+    .position-card .pos-remove{position:absolute;top:8px;right:8px;width:28px;height:28px;background:none;border:1px solid var(--color-border);border-radius:50%;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--color-error)}
+    .position-card .pos-remove:hover{background:var(--color-error);color:#fff}
+    .pos-file-list{margin-top:6px;display:flex;flex-direction:column;gap:6px}
+    .pos-file-item{display:flex;align-items:center;gap:8px;padding:6px;background:#fafafa;border-radius:var(--radius-sm)}
+    .pos-file-thumb{width:40px;height:40px;border-radius:var(--radius-sm);overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:#f0f0f0}
+    .pos-file-thumb img{width:100%;height:100%;object-fit:cover}
+    .pos-file-info{flex:1;min-width:0}
+    .pos-file-name{font-size:.8rem;word-break:break-all}
+    .pos-file-size{font-size:.7rem;color:var(--color-text-secondary)}
+    .pos-file-remove{width:24px;height:24px;border:none;background:none;color:var(--color-error);font-size:1rem;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center}
   </style>
 </head>
 <body>
@@ -60,22 +60,15 @@
         <div id="projectNameDisplay" style="display:none;padding:8px 0;font-weight:600;font-size:0.95rem;color:var(--color-primary);"></div>
 
         <div class="form-group">
-          <label class="form-label">Dateien hochladen <span class="required">*</span></label>
-          <div class="upload-buttons">
-            <button type="button" class="btn btn-secondary" id="btnCamera">&#128247; Foto</button>
-            <button type="button" class="btn btn-secondary" id="btnFile">&#128196; Datei</button>
-            <input type="file" id="inputCamera" accept="image/*" capture="environment">
-            <input type="file" id="inputFile" accept="*/*" multiple>
-          </div>
-          <div class="file-list" id="fileList"></div>
-          <div class="form-warning" id="wFile">Bitte mindestens eine Datei hochladen</div>
-        </div>
-
-        <div class="form-group">
           <label class="form-label">Datum</label>
           <input type="date" class="form-input" id="fDate">
         </div>
       </div>
+
+      <!-- Dynamic positions -->
+      <div id="positionsContainer"></div>
+
+      <button type="button" class="btn btn-secondary btn-block" id="btnAddPosition" style="margin-bottom:16px;">+ Weitere Position hinzufuegen</button>
 
       <button type="submit" class="btn btn-primary btn-block">Speichern</button>
       <button type="button" class="btn btn-danger btn-block mt-sm" id="btnDelete" style="display:none;">Loeschen</button>
@@ -89,23 +82,25 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
   <script src="shared.js"></script>
   <script>
-    // --- State ---
-    var currentId = null;
-    var pendingFiles = []; // { dataUrl, name, type, size, docType, description }
-    var isEditMode = false; // true when editing existing single doc
+    // --- Constants ---
     var DOC_TYPES = ['Belastungsversuch PDF','Bodengutachten','Lageplan','Statik/Lastangaben',
       'Fundamentplan','Bauplaene','Richtpreisangebot','Foto','Sonstiges'];
+    var DOC_TYPE_OPTIONS = '<option value="">Bitte waehlen</option>' +
+      DOC_TYPES.map(function(t) { return '<option value="' + t + '">' + t + '</option>'; }).join('');
+
+    // --- State ---
+    var currentId = null;
+    var isEditMode = false;
+    var positions = []; // [{ docType, description, files:[{ dataUrl, name, type, size, cloudUrl }] }]
+    var posCounter = 0;
 
     // --- Init ---
     initApp(function(user) {
       renderNav('documents');
       populateDropdowns();
-      setupUploads();
 
       var editId = getUrlParam('id');
       var isNew = getUrlParam('new');
-      var urlProjectId = getUrlParam('projectId');
-      // projectId handling is done inside openForm()
       if (editId) openForm(editId);
       else if (isNew) openForm(null);
       else showList();
@@ -206,10 +201,8 @@
     function openForm(id) {
       document.getElementById('listView').style.display = 'none';
       document.getElementById('formView').style.display = '';
-      pendingFiles = [];
       clearWarnings();
 
-      // Read projectId from URL BEFORE replaceState changes it
       var urlProjectId = getUrlParam('projectId');
 
       if (id) {
@@ -221,6 +214,7 @@
         history.replaceState(null, '', 'documents.html?id=' + id + (urlProjectId ? '&projectId=' + urlProjectId : ''));
         fillForm(d);
         document.getElementById('btnDelete').style.display = '';
+        document.getElementById('btnAddPosition').style.display = 'none';
       } else {
         currentId = null;
         isEditMode = false;
@@ -228,9 +222,9 @@
         history.replaceState(null, '', 'documents.html?new=1' + (urlProjectId ? '&projectId=' + urlProjectId : ''));
         resetForm();
         document.getElementById('btnDelete').style.display = 'none';
+        document.getElementById('btnAddPosition').style.display = '';
       }
 
-      // Set project AFTER resetForm (which calls .reset() and clears all fields)
       if (urlProjectId) {
         document.getElementById('fProject').value = urlProjectId;
         document.getElementById('projectDropdownGroup').style.display = 'none';
@@ -238,7 +232,6 @@
         var nameEl = document.getElementById('projectNameDisplay');
         nameEl.textContent = 'Projekt: ' + (proj ? (proj.name || 'Ohne Bezeichnung') : urlProjectId);
         nameEl.style.display = '';
-        console.log('[Docs] Project from URL:', urlProjectId, proj ? proj.name : '(not found)');
       } else {
         document.getElementById('projectDropdownGroup').style.display = '';
         document.getElementById('projectNameDisplay').style.display = 'none';
@@ -249,18 +242,20 @@
     function fillForm(d) {
       document.getElementById('fProject').value = d.projectId || '';
       document.getElementById('fDate').value = d.date || '';
+      var file = {};
       if (d.fileDataUrl) {
-        pendingFiles = [{ dataUrl: d.fileDataUrl, name: d.fileName, type: d.fileType, size: d.fileSize || 0, docType: d.docType || '', description: d.description || '' }];
+        file = { dataUrl: d.fileDataUrl, name: d.fileName, type: d.fileType, size: d.fileSize || 0 };
       } else if (d.downloadUrl) {
-        pendingFiles = [{ dataUrl: null, name: d.fileName, type: d.fileType, size: d.fileSize || 0, cloudUrl: d.downloadUrl, docType: d.docType || '', description: d.description || '' }];
+        file = { dataUrl: null, name: d.fileName, type: d.fileType, size: d.fileSize || 0, cloudUrl: d.downloadUrl };
       }
-      renderFileList();
+      positions = [{ docType: d.docType || '', description: d.description || '', files: file.name ? [file] : [] }];
+      renderPositions();
     }
 
     function resetForm() {
       document.getElementById('docForm').reset();
-      pendingFiles = [];
-      renderFileList();
+      positions = [{ docType: '', description: '', files: [] }];
+      renderPositions();
     }
 
     function clearWarnings() {
@@ -268,104 +263,176 @@
     }
 
     // =============================================
-    //  FILE UPLOADS (multiple)
+    //  DYNAMIC POSITIONS
     // =============================================
 
-    function setupUploads() {
-      document.getElementById('btnCamera').addEventListener('click', function() { document.getElementById('inputCamera').click(); });
-      document.getElementById('btnFile').addEventListener('click', function() { document.getElementById('inputFile').click(); });
+    function addPosition() {
+      savePositionFields();
+      positions.push({ docType: '', description: '', files: [] });
+      renderPositions();
+    }
 
-      ['inputCamera','inputFile'].forEach(function(inputId) {
-        document.getElementById(inputId).addEventListener('change', function(e) {
-          var files = Array.from(e.target.files);
-          var remaining = files.length;
-          if (remaining === 0) return;
+    document.getElementById('btnAddPosition').addEventListener('click', addPosition);
 
-          files.forEach(function(file) {
-            if (file.size > 5 * 1024 * 1024) {
-              showToast(file.name + ' ist zu gross (max. 5 MB)', 'error');
-              if (--remaining === 0) renderFileList();
-              return;
-            }
-            var isImage = file.type.startsWith('image/');
-            if (isImage) {
-              compressImage(file, 1920, 5).then(function(blob) {
-                fileToDataUrl(blob, file.name, 'image', blob.size, function() {
-                  if (--remaining === 0) renderFileList();
-                });
-              });
-            } else {
-              fileToDataUrl(file, file.name, 'file', file.size, function() {
-                if (--remaining === 0) renderFileList();
-              });
-            }
+    function removePosition(idx) {
+      if (positions.length <= 1) return;
+      savePositionFields();
+      positions.splice(idx, 1);
+      renderPositions();
+    }
+
+    function renderPositions() {
+      var container = document.getElementById('positionsContainer');
+      container.innerHTML = '';
+
+      positions.forEach(function(pos, idx) {
+        posCounter++;
+        var uid = 'pos_' + posCounter;
+        var canRemove = positions.length > 1 && !isEditMode;
+
+        var card = document.createElement('div');
+        card.className = 'position-card';
+        card.innerHTML =
+          (canRemove ? '<button type="button" class="pos-remove" data-idx="' + idx + '">&times;</button>' : '') +
+          '<div style="font-weight:600;font-size:.85rem;margin-bottom:8px;">Position ' + (idx + 1) + '</div>' +
+          '<div class="form-group">' +
+            '<label class="form-label">Dokumenttyp <span class="required">*</span></label>' +
+            '<select class="form-select pos-doctype" data-idx="' + idx + '">' + DOC_TYPE_OPTIONS + '</select>' +
+          '</div>' +
+          '<div class="form-group">' +
+            '<label class="form-label">Dateien hochladen <span class="required">*</span></label>' +
+            '<div class="upload-buttons">' +
+              '<button type="button" class="btn btn-secondary pos-btn-cam" data-idx="' + idx + '">&#128247; Foto</button>' +
+              '<button type="button" class="btn btn-secondary pos-btn-file" data-idx="' + idx + '">&#128196; Datei</button>' +
+              '<input type="file" class="pos-input-cam" data-idx="' + idx + '" accept="image/*" capture="environment">' +
+              '<input type="file" class="pos-input-file" data-idx="' + idx + '" accept="*/*" multiple>' +
+            '</div>' +
+            '<div class="pos-file-list" data-idx="' + idx + '"></div>' +
+          '</div>' +
+          '<div class="form-group">' +
+            '<label class="form-label">Beschreibung</label>' +
+            '<input type="text" class="form-input pos-description" data-idx="' + idx + '" placeholder="Optional">' +
+          '</div>';
+
+        container.appendChild(card);
+
+        // Set values
+        card.querySelector('.pos-doctype').value = pos.docType || '';
+        card.querySelector('.pos-description').value = pos.description || '';
+
+        // Render file previews
+        renderPosFiles(idx);
+
+        // Events: remove
+        var removeBtn = card.querySelector('.pos-remove');
+        if (removeBtn) {
+          removeBtn.addEventListener('click', function() {
+            removePosition(parseInt(this.getAttribute('data-idx')));
           });
-          e.target.value = '';
+        }
+
+        // Events: field changes
+        card.querySelector('.pos-doctype').addEventListener('change', function() {
+          positions[idx].docType = this.value;
         });
+        card.querySelector('.pos-description').addEventListener('input', function() {
+          positions[idx].description = this.value;
+        });
+
+        // Events: upload buttons
+        var btnCam = card.querySelector('.pos-btn-cam');
+        var btnFile = card.querySelector('.pos-btn-file');
+        var inputCam = card.querySelector('.pos-input-cam');
+        var inputFile = card.querySelector('.pos-input-file');
+
+        btnCam.addEventListener('click', function() { inputCam.click(); });
+        btnFile.addEventListener('click', function() { inputFile.click(); });
+
+        inputCam.addEventListener('change', function(e) { handlePosUpload(e, idx); });
+        inputFile.addEventListener('change', function(e) { handlePosUpload(e, idx); });
       });
     }
 
-    function fileToDataUrl(blob, name, type, size, done) {
-      var reader = new FileReader();
-      reader.onload = function() {
-        // Auto-detect docType for images
-        var autoType = (type === 'image') ? 'Foto' : '';
-        pendingFiles.push({ dataUrl: reader.result, name: name, type: type, size: size, docType: autoType, description: '' });
-        done();
-      };
-      reader.readAsDataURL(blob);
+    function savePositionFields() {
+      document.querySelectorAll('.pos-doctype').forEach(function(el) {
+        var i = parseInt(el.getAttribute('data-idx'));
+        if (positions[i]) positions[i].docType = el.value;
+      });
+      document.querySelectorAll('.pos-description').forEach(function(el) {
+        var i = parseInt(el.getAttribute('data-idx'));
+        if (positions[i]) positions[i].description = el.value;
+      });
     }
 
-    function formatSize(bytes) {
-      if (bytes < 1024) return bytes + ' B';
-      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-      return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    function handlePosUpload(e, posIdx) {
+      var fileArr = Array.from(e.target.files);
+      var remaining = fileArr.length;
+      if (remaining === 0) return;
+
+      fileArr.forEach(function(file) {
+        if (file.size > 5 * 1024 * 1024) {
+          showToast(file.name + ' ist zu gross (max. 5 MB)', 'error');
+          if (--remaining === 0) renderPosFiles(posIdx);
+          return;
+        }
+        var isImage = file.type.startsWith('image/');
+        if (isImage) {
+          compressImage(file, 1920, 5).then(function(blob) {
+            var reader = new FileReader();
+            reader.onload = function() {
+              positions[posIdx].files.push({ dataUrl: reader.result, name: file.name, type: blob.type || file.type, size: blob.size });
+              // Auto-set docType to Foto if not yet chosen
+              if (!positions[posIdx].docType) positions[posIdx].docType = 'Foto';
+              if (--remaining === 0) {
+                savePositionFields();
+                renderPositions();
+              }
+            };
+            reader.readAsDataURL(blob);
+          });
+        } else {
+          var reader = new FileReader();
+          reader.onload = function() {
+            positions[posIdx].files.push({ dataUrl: reader.result, name: file.name, type: file.type, size: file.size });
+            if (--remaining === 0) {
+              savePositionFields();
+              renderPositions();
+            }
+          };
+          reader.readAsDataURL(file);
+        }
+      });
+      e.target.value = '';
     }
 
-    function renderFileList() {
-      var container = document.getElementById('fileList');
-      if (pendingFiles.length === 0) { container.innerHTML = ''; return; }
+    function renderPosFiles(posIdx) {
+      var container = document.querySelector('.pos-file-list[data-idx="' + posIdx + '"]');
+      if (!container) return;
+      var files = positions[posIdx].files || [];
+      if (files.length === 0) { container.innerHTML = ''; return; }
 
-      var typeOptions = '<option value="">Typ waehlen</option>' +
-        DOC_TYPES.map(function(t) { return '<option value="' + t + '">' + t + '</option>'; }).join('');
-
-      container.innerHTML = pendingFiles.map(function(f, i) {
-        var isImg = (f.type === 'image' || (f.type || '').indexOf('image') !== -1) && f.dataUrl;
+      container.innerHTML = files.map(function(f, fIdx) {
+        var isImg = (f.type || '').indexOf('image') !== -1 && f.dataUrl;
         var thumb = isImg
-          ? '<div class="file-item-thumb"><img src="' + f.dataUrl + '" alt=""></div>'
-          : '<div class="file-item-thumb"><span class="file-item-pdf">&#128196;</span></div>';
+          ? '<div class="pos-file-thumb"><img src="' + f.dataUrl + '" alt=""></div>'
+          : '<div class="pos-file-thumb" style="font-size:1.2rem;color:var(--color-text-secondary);">&#128196;</div>';
         var cloudTag = f.cloudUrl && !f.dataUrl ? ' (Cloud)' : '';
-        var selType = f.docType || '';
-
-        return '<div class="file-item">' + thumb +
-          '<div class="file-item-info">' +
-            '<div class="file-item-name">' + esc(f.name) + cloudTag + '</div>' +
-            '<div class="file-item-size">' + formatSize(f.size) + '</div>' +
+        return '<div class="pos-file-item">' + thumb +
+          '<div class="pos-file-info">' +
+            '<div class="pos-file-name">' + esc(f.name) + cloudTag + '</div>' +
+            '<div class="pos-file-size">' + formatSize(f.size) + '</div>' +
           '</div>' +
-          '<button type="button" class="file-item-remove" data-i="' + i + '">&times;</button>' +
-          '<div class="file-item-fields">' +
-            '<select data-i="' + i + '" data-field="docType">' +
-              typeOptions.replace('value="' + selType + '"', 'value="' + selType + '" selected') +
-            '</select>' +
-            '<input type="text" data-i="' + i + '" data-field="description" placeholder="Beschreibung (optional)" value="' + esc(f.description || '') + '">' +
-          '</div>' +
+          '<button type="button" class="pos-file-remove" data-pos="' + posIdx + '" data-file="' + fIdx + '">&times;</button>' +
         '</div>';
       }).join('');
 
-      container.querySelectorAll('.file-item-remove').forEach(function(btn) {
+      container.querySelectorAll('.pos-file-remove').forEach(function(btn) {
         btn.addEventListener('click', function() {
-          pendingFiles.splice(parseInt(btn.getAttribute('data-i')), 1);
-          renderFileList();
-        });
-      });
-      container.querySelectorAll('[data-field="docType"]').forEach(function(sel) {
-        sel.addEventListener('change', function() {
-          pendingFiles[parseInt(sel.getAttribute('data-i'))].docType = sel.value;
-        });
-      });
-      container.querySelectorAll('[data-field="description"]').forEach(function(inp) {
-        inp.addEventListener('input', function() {
-          pendingFiles[parseInt(inp.getAttribute('data-i'))].description = inp.value;
+          var pi = parseInt(btn.getAttribute('data-pos'));
+          var fi = parseInt(btn.getAttribute('data-file'));
+          positions[pi].files.splice(fi, 1);
+          savePositionFields();
+          renderPositions();
         });
       });
     }
@@ -374,11 +441,11 @@
     //  FIREBASE STORAGE
     // =============================================
 
-    function uploadToStorage(projectId, docId, fileObj) {
-      if (!isOnline || !fileObj || !fileObj.dataUrl) return Promise.resolve(null);
+    function uploadToStorage(projectId, docId, dataUrl) {
+      if (!isOnline || !dataUrl) return Promise.resolve(null);
       try {
         var ref = storage.ref('files/' + projectId + '/' + docId);
-        var parts = fileObj.dataUrl.split(',');
+        var parts = dataUrl.split(',');
         var mime = parts[0].match(/:(.*?);/)[1];
         var bstr = atob(parts[1]);
         var arr = new Uint8Array(bstr.length);
@@ -398,7 +465,7 @@
 
     document.getElementById('docForm').addEventListener('submit', function(e) {
       e.preventDefault();
-      console.log('[Docs] Save triggered, files:', pendingFiles.length);
+      savePositionFields();
 
       try {
         clearWarnings();
@@ -411,23 +478,28 @@
 
         var projectId = document.getElementById('fProject').value;
         warn('wProject', !projectId);
-        warn('wFile', pendingFiles.length === 0);
-
-        // Check if any file is missing docType
-        var missingType = pendingFiles.some(function(f) { return !f.docType; });
-        if (missingType) hasWarning = true;
 
         var proj = projectId ? getItemById('projects', projectId) : null;
         var date = document.getElementById('fDate').value;
 
+        // Check positions have files and docType
+        var hasAnyFiles = positions.some(function(p) { return p.files.length > 0; });
+        if (!hasAnyFiles) {
+          showToast('Bitte mindestens eine Datei hochladen', 'error');
+          return;
+        }
+        var missingType = positions.some(function(p) { return !p.docType; });
+        if (missingType) hasWarning = true;
+
         if (isEditMode && currentId) {
-          // Edit mode: save single doc
-          var f = pendingFiles[0] || {};
+          // Edit mode: save single doc (first file of first position)
+          var pos = positions[0] || {};
+          var f = (pos.files || [])[0] || {};
           var data = {
             projectId: projectId,
             projectName: proj ? proj.name : '',
-            docType: f.docType || '',
-            description: f.description || '',
+            docType: pos.docType || '',
+            description: pos.description || '',
             date: date,
             fileName: f.name || '',
             fileType: f.type || '',
@@ -440,9 +512,8 @@
 
           showToast(hasWarning ? 'Gespeichert (fehlende Pflichtfelder)' : 'Dokument gespeichert', hasWarning ? 'warning' : 'success');
 
-          // Upload to Storage
           if (isOnline && f.dataUrl && projectId && !f.cloudUrl) {
-            uploadToStorage(projectId, currentId, f).then(function(url) {
+            uploadToStorage(projectId, currentId, f.dataUrl).then(function(url) {
               if (url) {
                 var item = getItemById('documents', currentId);
                 if (item) { item.downloadUrl = url; saveToLocal('documents', currentId, item); }
@@ -450,47 +521,43 @@
             });
           }
         } else {
-          // New mode: create one document per file
-          if (pendingFiles.length === 0) {
-            showToast('Bitte mindestens eine Datei hochladen', 'error');
-            return;
-          }
-
+          // New mode: each position's each file becomes its own record
           var savedIds = [];
-          pendingFiles.forEach(function(f) {
-            var docId = generateId();
-            var data = {
-              projectId: projectId,
-              projectName: proj ? proj.name : '',
-              docType: f.docType || '',
-              description: f.description || '',
-              date: date,
-              fileName: f.name || '',
-              fileType: f.type || '',
-              fileSize: f.size || 0,
-              fileDataUrl: f.dataUrl || '',
-              downloadUrl: ''
-            };
-            try { saveToLocal('documents', docId, data); }
-            catch (err) { data.fileDataUrl = ''; saveToLocal('documents', docId, data); }
-            savedIds.push(docId);
+          positions.forEach(function(pos) {
+            if (pos.files.length === 0) return;
+            pos.files.forEach(function(f) {
+              var docId = generateId();
+              var data = {
+                projectId: projectId,
+                projectName: proj ? proj.name : '',
+                docType: pos.docType || '',
+                description: pos.description || '',
+                date: date,
+                fileName: f.name || '',
+                fileType: f.type || '',
+                fileSize: f.size || 0,
+                fileDataUrl: f.dataUrl || '',
+                downloadUrl: ''
+              };
+              try { saveToLocal('documents', docId, data); }
+              catch (err) { data.fileDataUrl = ''; saveToLocal('documents', docId, data); }
+              savedIds.push(docId);
 
-            // Upload to Storage
-            if (isOnline && f.dataUrl && projectId) {
-              uploadToStorage(projectId, docId, f).then(function(url) {
-                if (url) {
-                  var item = getItemById('documents', docId);
-                  if (item) { item.downloadUrl = url; saveToLocal('documents', docId, item); }
-                }
-              });
-            }
+              if (isOnline && f.dataUrl && projectId) {
+                uploadToStorage(projectId, docId, f.dataUrl).then(function(url) {
+                  if (url) {
+                    var item = getItemById('documents', docId);
+                    if (item) { item.downloadUrl = url; saveToLocal('documents', docId, item); }
+                  }
+                });
+              }
+            });
           });
 
           var count = savedIds.length;
           showToast(count + ' Dokument' + (count > 1 ? 'e' : '') + ' gespeichert' +
             (hasWarning ? ' (fehlende Pflichtfelder)' : ''), hasWarning ? 'warning' : 'success');
 
-          // After save: return to project if came from project, otherwise stay/list
           var urlProjId = getUrlParam('projectId');
           if (urlProjId) {
             window.location.href = 'projects.html?id=' + urlProjId;
@@ -501,6 +568,7 @@
             history.replaceState(null, '', 'documents.html?id=' + currentId);
             document.getElementById('formTitle').textContent = 'Dokument bearbeiten';
             document.getElementById('btnDelete').style.display = '';
+            document.getElementById('btnAddPosition').style.display = 'none';
           } else {
             showList();
             return;
@@ -530,7 +598,6 @@
       }
     });
 
-    // Smart back button: project context or list
     (function() {
       var projId = getUrlParam('projectId');
       var btn = document.getElementById('btnBack');
@@ -547,10 +614,6 @@
     })();
 
     // =============================================
-    //  HELPERS
-    // =============================================
-
-    // =============================================
     //  VIEW / DOWNLOAD / OFFLINE
     // =============================================
 
@@ -560,12 +623,6 @@
 
       var dataUrl = d.fileDataUrl || localStorage.getItem('offline_doc_' + docId);
       var url = dataUrl || d.downloadUrl;
-
-      console.log('[Docs] Anzeigen clicked, id:', docId);
-      console.log('[Docs] downloadUrl:', d.downloadUrl || '(leer)');
-      console.log('[Docs] fileDataUrl:', d.fileDataUrl ? d.fileDataUrl.substring(0, 50) + '...' : '(leer)');
-      console.log('[Docs] resolved URL:', url ? url.substring(0, 80) + '...' : '(keine)');
-      console.log('[Docs] fileType:', d.fileType, 'fileName:', d.fileName);
 
       if (!url) {
         if (!isOnline) showToast('Offline — Datei nicht lokal gespeichert', 'error');
@@ -583,12 +640,8 @@
           var w = window.open(url, '_blank');
           if (!w) {
             var a = document.createElement('a');
-            a.href = url;
-            a.target = '_blank';
-            a.rel = 'noopener';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
+            a.href = url; a.target = '_blank'; a.rel = 'noopener';
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
           }
         } else if (url.startsWith('data:')) {
           var w = window.open('');
@@ -596,9 +649,7 @@
             w.document.write('<html><head><title>PDF</title></head><body style="margin:0;">' +
               '<iframe src="' + url + '" style="width:100%;height:100%;border:none;"></iframe></body></html>');
             w.document.close();
-          } else {
-            window.location.href = url;
-          }
+          } else { window.location.href = url; }
         }
       } else {
         var w = window.open(url, '_blank');
@@ -618,11 +669,8 @@
       }
 
       var a = document.createElement('a');
-      a.href = url;
-      a.download = d.fileName || 'download';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      a.href = url; a.download = d.fileName || 'download';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
     }
 
     function toggleOffline(docId, btn) {
@@ -633,7 +681,6 @@
       var existing = localStorage.getItem(offlineKey);
 
       if (existing) {
-        // Remove offline cache
         localStorage.removeItem(offlineKey);
         btn.innerHTML = '&#128229; Offline speichern';
         showToast('Offline-Kopie entfernt', 'success');
@@ -641,19 +688,15 @@
         return;
       }
 
-      // Save offline
       var dataUrl = d.fileDataUrl;
       if (!dataUrl && d.downloadUrl && isOnline) {
-        // Fetch from cloud and convert to base64
         btn.textContent = 'Lade...';
         btn.disabled = true;
         fetch(d.downloadUrl).then(function(resp) { return resp.blob(); })
           .then(function(blob) {
             if (blob.size > 2 * 1024 * 1024) {
               showToast('Datei zu gross fuer Offline-Speicherung (max 2 MB)', 'error');
-              btn.innerHTML = '&#128229; Offline speichern';
-              btn.disabled = false;
-              return;
+              btn.innerHTML = '&#128229; Offline speichern'; btn.disabled = false; return;
             }
             var reader = new FileReader();
             reader.onload = function() {
@@ -672,31 +715,20 @@
           })
           .catch(function() {
             showToast('Download fehlgeschlagen', 'error');
-            btn.innerHTML = '&#128229; Offline speichern';
-            btn.disabled = false;
+            btn.innerHTML = '&#128229; Offline speichern'; btn.disabled = false;
           });
         return;
       }
 
-      if (!dataUrl) {
-        showToast('Keine Datei zum Offline-Speichern vorhanden', 'error');
-        return;
-      }
-
-      // Check size (~2 MB limit for base64 in localStorage)
-      if (dataUrl.length > 2 * 1024 * 1024) {
-        showToast('Datei zu gross fuer Offline-Speicherung (max 2 MB)', 'error');
-        return;
-      }
+      if (!dataUrl) { showToast('Keine Datei zum Offline-Speichern vorhanden', 'error'); return; }
+      if (dataUrl.length > 2 * 1024 * 1024) { showToast('Datei zu gross fuer Offline-Speicherung (max 2 MB)', 'error'); return; }
 
       try {
         localStorage.setItem(offlineKey, dataUrl);
         btn.innerHTML = '&#10003; Offline';
         showToast('Offline gespeichert', 'success');
         renderList();
-      } catch (e) {
-        showToast('Speicher voll — kann nicht offline speichern', 'error');
-      }
+      } catch (e) { showToast('Speicher voll — kann nicht offline speichern', 'error'); }
     }
 
     function showImageOverlay(src) {
@@ -713,6 +745,12 @@
     // =============================================
     //  HELPERS
     // =============================================
+
+    function formatSize(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    }
 
     function esc(str) {
       var d = document.createElement('div');
