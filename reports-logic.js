@@ -390,7 +390,7 @@ function handleFiles(e, onEach) {
       reader.onload = function() { onEach({ dataUrl: reader.result, name: file.name, type: 'pdf' }); };
       reader.readAsDataURL(file);
     } else {
-      compressImage(file, 1920, 5).then(function(blob) {
+      compressImage(file).then(function(blob) {
         var reader = new FileReader();
         reader.onload = function() { onEach({ dataUrl: reader.result, name: file.name, type: 'image' }); };
         reader.readAsDataURL(blob);

@@ -377,10 +377,10 @@
         }
         var isImage = file.type.startsWith('image/');
         if (isImage) {
-          compressImage(file, 1920, 5).then(function(blob) {
+          compressImage(file).then(function(blob) {
             var reader = new FileReader();
             reader.onload = function() {
-              positions[posIdx].files.push({ dataUrl: reader.result, name: file.name, type: blob.type || file.type, size: blob.size });
+              positions[posIdx].files.push({ dataUrl: reader.result, name: file.name, type: blob.type || file.type, size: blob.size, originalSize: blob._originalSize || file.size });
               // Auto-set docType to Foto if not yet chosen
               if (!positions[posIdx].docType) positions[posIdx].docType = 'Foto';
               if (--remaining === 0) {
@@ -420,7 +420,7 @@
         return '<div class="pos-file-item">' + thumb +
           '<div class="pos-file-info">' +
             '<div class="pos-file-name">' + esc(f.name) + cloudTag + '</div>' +
-            '<div class="pos-file-size">' + formatSize(f.size) + '</div>' +
+            '<div class="pos-file-size">' + formatSize(f.size) + (f.originalSize && f.originalSize > f.size ? ' (komprimiert von ' + formatSize(f.originalSize) + ')' : '') + '</div>' +
           '</div>' +
           '<button type="button" class="pos-file-remove" data-pos="' + posIdx + '" data-file="' + fIdx + '">&times;</button>' +
         '</div>';

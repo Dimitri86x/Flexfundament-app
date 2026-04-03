@@ -382,8 +382,9 @@ function getAutocompleteSuggestions(collection, field) {
 // --- Image Compression ---
 
 function compressImage(file, maxWidth, maxSizeMB) {
-  maxWidth = maxWidth || 1920;
-  maxSizeMB = maxSizeMB || 5;
+  maxWidth = maxWidth || 1600;
+  maxSizeMB = maxSizeMB || 2;
+  var maxBytes = maxSizeMB * 1024 * 1024;
 
   return new Promise(function(resolve) {
     if (!file.type.startsWith('image/')) {
@@ -395,11 +396,11 @@ function compressImage(file, maxWidth, maxSizeMB) {
     var url = URL.createObjectURL(file);
     img.onload = function() {
       URL.revokeObjectURL(url);
-      if (img.width <= maxWidth && file.size <= maxSizeMB * 1024 * 1024) {
-        resolve(file);
-        return;
-      }
-      compressWithCanvas(img, file.type, maxWidth, resolve);
+      // Always compress through canvas (converts HEIC→JPEG, reduces size)
+      compressWithCanvas(img, maxWidth, maxBytes, function(blob) {
+        blob._originalSize = file.size;
+        resolve(blob);
+      });
     };
     img.onerror = function() {
       URL.revokeObjectURL(url);
@@ -409,18 +410,33 @@ function compressImage(file, maxWidth, maxSizeMB) {
   });
 }
 
-function compressWithCanvas(img, mimeType, maxWidth, resolve) {
+function compressWithCanvas(img, maxWidth, maxBytes, done) {
   var canvas = document.createElement('canvas');
   var ratio = Math.min(1, maxWidth / img.width);
-  canvas.width = img.width * ratio;
-  canvas.height = img.height * ratio;
+  canvas.width = Math.round(img.width * ratio);
+  canvas.height = Math.round(img.height * ratio);
 
   var ctx = canvas.getContext('2d');
   ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-  canvas.toBlob(function(blob) {
-    resolve(blob || img);
-  }, mimeType || 'image/jpeg', 0.85);
+  // Iterative compression: start at 0.6, lower until under maxBytes
+  var qualities = [0.6, 0.4, 0.3];
+  var attempt = 0;
+
+  function tryCompress() {
+    var quality = qualities[attempt] || 0.3;
+    canvas.toBlob(function(blob) {
+      if (!blob) { done(new Blob([])); return; }
+      if (blob.size <= maxBytes || attempt >= qualities.length - 1) {
+        done(blob);
+      } else {
+        attempt++;
+        tryCompress();
+      }
+    }, 'image/jpeg', quality);
+  }
+
+  tryCompress();
 }
 
 // --- Navigation ---

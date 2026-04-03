@@ -392,7 +392,7 @@
               showToast(file.name + ' ist zu gross (max. 5 MB)', 'error');
               return;
             }
-            compressImage(file, 1920, 5).then(function(blob) {
+            compressImage(file).then(function(blob) {
               var reader = new FileReader();
               reader.onload = function() {
                 photos.push({ dataUrl: reader.result, name: file.name, type: file.type });

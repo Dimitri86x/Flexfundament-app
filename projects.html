@@ -550,7 +550,7 @@
           reader.readAsDataURL(file);
         } else {
           // Compress image then store
-          compressImage(file, 1920, 5).then(function(blob) {
+          compressImage(file).then(function(blob) {
             var reader = new FileReader();
             reader.onload = function() {
               accessFiles.push({ dataUrl: reader.result, name: file.name, type: 'image' });
