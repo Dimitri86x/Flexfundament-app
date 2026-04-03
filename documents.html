@@ -15,10 +15,12 @@
     .doc-card-thumb{width:48px;height:48px;border-radius:var(--radius-sm);overflow:hidden;border:1px solid var(--color-border);flex-shrink:0;display:flex;align-items:center;justify-content:center;background:#f5f5f5;font-size:.6rem;text-align:center;color:var(--color-text-secondary)}
     .doc-card-thumb img{width:100%;height:100%;object-fit:cover}
     .file-list{margin-top:8px;display:flex;flex-direction:column;gap:8px}
-    .file-item{display:flex;align-items:center;gap:8px;padding:8px;border:1px solid var(--color-border);border-radius:var(--radius)}
+    .file-item{display:flex;gap:8px;padding:8px;border:1px solid var(--color-border);border-radius:var(--radius);flex-wrap:wrap;align-items:flex-start}
     .file-item-thumb{width:48px;height:48px;border-radius:var(--radius-sm);overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:#f5f5f5}
     .file-item-thumb img{width:100%;height:100%;object-fit:cover}
     .file-item-pdf{font-size:1.5rem;color:var(--color-text-secondary)}
+    .file-item-fields{width:100%;display:flex;flex-direction:column;gap:4px;margin-top:4px}
+    .file-item-fields select,.file-item-fields input{font-size:.8rem;padding:6px 8px;border:1px solid var(--color-border);border-radius:var(--radius-sm)}
     .doc-actions{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
     .doc-actions .btn{font-size:.7rem;padding:4px 8px;min-height:32px}
     .doc-overlay{position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.9);display:flex;align-items:center;justify-content:center;cursor:pointer}
@@ -58,23 +60,6 @@
         <div id="projectNameDisplay" style="display:none;padding:8px 0;font-weight:600;font-size:0.95rem;color:var(--color-primary);"></div>
 
         <div class="form-group">
-          <label class="form-label">Dokumenttyp <span class="required">*</span></label>
-          <select class="form-select" id="fDocType" required>
-            <option value="">Bitte waehlen</option>
-            <option>Belastungsversuch PDF</option>
-            <option>Bodengutachten</option>
-            <option>Lageplan</option>
-            <option>Statik/Lastangaben</option>
-            <option>Fundamentplan</option>
-            <option>Bauplaene</option>
-            <option>Richtpreisangebot</option>
-            <option>Foto</option>
-            <option>Sonstiges</option>
-          </select>
-          <div class="form-warning" id="wDocType">Bitte Dokumenttyp waehlen</div>
-        </div>
-
-        <div class="form-group">
           <label class="form-label">Dateien hochladen <span class="required">*</span></label>
           <div class="upload-buttons">
             <button type="button" class="btn btn-secondary" id="btnCamera">&#128247; Foto</button>
@@ -84,11 +69,6 @@
           </div>
           <div class="file-list" id="fileList"></div>
           <div class="form-warning" id="wFile">Bitte mindestens eine Datei hochladen</div>
-        </div>
-
-        <div class="form-group">
-          <label class="form-label">Beschreibung</label>
-          <textarea class="form-textarea" id="fDescription" rows="2"></textarea>
         </div>
 
         <div class="form-group">
@@ -111,8 +91,10 @@
   <script>
     // --- State ---
     var currentId = null;
-    var pendingFiles = []; // { dataUrl, name, type, size }
+    var pendingFiles = []; // { dataUrl, name, type, size, docType, description }
     var isEditMode = false; // true when editing existing single doc
+    var DOC_TYPES = ['Belastungsversuch PDF','Bodengutachten','Lageplan','Statik/Lastangaben',
+      'Fundamentplan','Bauplaene','Richtpreisangebot','Foto','Sonstiges'];
 
     // --- Init ---
     initApp(function(user) {
@@ -143,9 +125,7 @@
       document.getElementById('fProject').innerHTML = '<option value="">Bitte waehlen</option>' + opts;
       document.getElementById('filterProject').innerHTML = '<option value="">Alle Projekte</option>' + opts;
 
-      var types = ['Belastungsversuch PDF','Bodengutachten','Lageplan','Statik/Lastangaben',
-        'Fundamentplan','Bauplaene','Richtpreisangebot','Foto','Sonstiges'];
-      var typeOpts = types.map(function(t) { return '<option value="' + t + '">' + t + '</option>'; }).join('');
+      var typeOpts = DOC_TYPES.map(function(t) { return '<option value="' + t + '">' + t + '</option>'; }).join('');
       document.getElementById('filterDocType').innerHTML = '<option value="">Alle Typen</option>' + typeOpts;
     }
 
@@ -268,13 +248,11 @@
 
     function fillForm(d) {
       document.getElementById('fProject').value = d.projectId || '';
-      document.getElementById('fDocType').value = d.docType || '';
-      document.getElementById('fDescription').value = d.description || '';
       document.getElementById('fDate').value = d.date || '';
       if (d.fileDataUrl) {
-        pendingFiles = [{ dataUrl: d.fileDataUrl, name: d.fileName, type: d.fileType, size: d.fileSize || 0 }];
+        pendingFiles = [{ dataUrl: d.fileDataUrl, name: d.fileName, type: d.fileType, size: d.fileSize || 0, docType: d.docType || '', description: d.description || '' }];
       } else if (d.downloadUrl) {
-        pendingFiles = [{ dataUrl: null, name: d.fileName, type: d.fileType, size: d.fileSize || 0, cloudUrl: d.downloadUrl }];
+        pendingFiles = [{ dataUrl: null, name: d.fileName, type: d.fileType, size: d.fileSize || 0, cloudUrl: d.downloadUrl, docType: d.docType || '', description: d.description || '' }];
       }
       renderFileList();
     }
@@ -330,7 +308,9 @@
     function fileToDataUrl(blob, name, type, size, done) {
       var reader = new FileReader();
       reader.onload = function() {
-        pendingFiles.push({ dataUrl: reader.result, name: name, type: type, size: size });
+        // Auto-detect docType for images
+        var autoType = (type === 'image') ? 'Foto' : '';
+        pendingFiles.push({ dataUrl: reader.result, name: name, type: type, size: size, docType: autoType, description: '' });
         done();
       };
       reader.readAsDataURL(blob);
@@ -346,20 +326,29 @@
       var container = document.getElementById('fileList');
       if (pendingFiles.length === 0) { container.innerHTML = ''; return; }
 
+      var typeOptions = '<option value="">Typ waehlen</option>' +
+        DOC_TYPES.map(function(t) { return '<option value="' + t + '">' + t + '</option>'; }).join('');
+
       container.innerHTML = pendingFiles.map(function(f, i) {
-        var thumb;
-        if (f.type === 'image' && f.dataUrl) {
-          thumb = '<div class="file-item-thumb"><img src="' + f.dataUrl + '" alt=""></div>';
-        } else {
-          thumb = '<div class="file-item-thumb"><span class="file-item-pdf">&#128196;</span></div>';
-        }
+        var isImg = (f.type === 'image' || (f.type || '').indexOf('image') !== -1) && f.dataUrl;
+        var thumb = isImg
+          ? '<div class="file-item-thumb"><img src="' + f.dataUrl + '" alt=""></div>'
+          : '<div class="file-item-thumb"><span class="file-item-pdf">&#128196;</span></div>';
         var cloudTag = f.cloudUrl && !f.dataUrl ? ' (Cloud)' : '';
+        var selType = f.docType || '';
+
         return '<div class="file-item">' + thumb +
           '<div class="file-item-info">' +
             '<div class="file-item-name">' + esc(f.name) + cloudTag + '</div>' +
             '<div class="file-item-size">' + formatSize(f.size) + '</div>' +
           '</div>' +
           '<button type="button" class="file-item-remove" data-i="' + i + '">&times;</button>' +
+          '<div class="file-item-fields">' +
+            '<select data-i="' + i + '" data-field="docType">' +
+              typeOptions.replace('value="' + selType + '"', 'value="' + selType + '" selected') +
+            '</select>' +
+            '<input type="text" data-i="' + i + '" data-field="description" placeholder="Beschreibung (optional)" value="' + esc(f.description || '') + '">' +
+          '</div>' +
         '</div>';
       }).join('');
 
@@ -367,6 +356,16 @@
         btn.addEventListener('click', function() {
           pendingFiles.splice(parseInt(btn.getAttribute('data-i')), 1);
           renderFileList();
+        });
+      });
+      container.querySelectorAll('[data-field="docType"]').forEach(function(sel) {
+        sel.addEventListener('change', function() {
+          pendingFiles[parseInt(sel.getAttribute('data-i'))].docType = sel.value;
+        });
+      });
+      container.querySelectorAll('[data-field="description"]').forEach(function(inp) {
+        inp.addEventListener('input', function() {
+          pendingFiles[parseInt(inp.getAttribute('data-i'))].description = inp.value;
         });
       });
     }
@@ -411,13 +410,14 @@
         }
 
         var projectId = document.getElementById('fProject').value;
-        var docType = document.getElementById('fDocType').value;
         warn('wProject', !projectId);
-        warn('wDocType', !docType);
         warn('wFile', pendingFiles.length === 0);
 
+        // Check if any file is missing docType
+        var missingType = pendingFiles.some(function(f) { return !f.docType; });
+        if (missingType) hasWarning = true;
+
         var proj = projectId ? getItemById('projects', projectId) : null;
-        var description = document.getElementById('fDescription').value.trim();
         var date = document.getElementById('fDate').value;
 
         if (isEditMode && currentId) {
@@ -426,8 +426,8 @@
           var data = {
             projectId: projectId,
             projectName: proj ? proj.name : '',
-            docType: docType,
-            description: description,
+            docType: f.docType || '',
+            description: f.description || '',
             date: date,
             fileName: f.name || '',
             fileType: f.type || '',
@@ -462,8 +462,8 @@
             var data = {
               projectId: projectId,
               projectName: proj ? proj.name : '',
-              docType: docType,
-              description: description,
+              docType: f.docType || '',
+              description: f.description || '',
               date: date,
               fileName: f.name || '',
               fileType: f.type || '',
@@ -493,7 +493,6 @@
           // After save: return to project if came from project, otherwise stay/list
           var urlProjId = getUrlParam('projectId');
           if (urlProjId) {
-            showToast(savedIds.length + ' Dokument' + (savedIds.length > 1 ? 'e' : '') + ' gespeichert', 'success');
             window.location.href = 'projects.html?id=' + urlProjId;
             return;
           } else if (savedIds.length === 1) {
