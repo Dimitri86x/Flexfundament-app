@@ -613,7 +613,7 @@
     // =============================================
 
     function renderLinkedRecords(projectId) {
-      // Reports — clickable links
+      // Reports
       var reports = getActiveItems('reports').filter(function(r) { return r.projectId === projectId; });
       var elReports = document.getElementById('linkedReports');
       if (reports.length === 0) {
@@ -624,8 +624,13 @@
             (r.workers && r.workers.length ? ' — ' + esc(r.workers.join(', ')) : '');
           var status = r.status || 'entwurf';
           var badgeClass = status === 'abgeschlossen' ? 'badge-abgeschlossen' : 'badge-entwurf';
-          return '<a href="reports.html?id=' + r.id + '&projectId=' + projectId + '" style="display:block;padding:6px 0;border-bottom:1px solid var(--color-border);">' +
-            esc(label) + ' <span class="badge ' + badgeClass + '">' + esc(status) + '</span></a>';
+          return '<div style="padding:6px 0;border-bottom:1px solid var(--color-border);display:flex;align-items:center;gap:8px;">' +
+            '<div style="flex:1;min-width:0;font-size:.85rem;">' +
+              '<a href="reports.html?id=' + r.id + '&projectId=' + projectId + '">' + esc(label) + '</a>' +
+              ' <span class="badge ' + badgeClass + '">' + esc(status) + '</span>' +
+            '</div>' +
+            '<button onclick="deleteLinkedRecord(\'reports\',\'' + r.id + '\',\'' + projectId + '\')" class="btn btn-secondary" style="font-size:.7rem;padding:4px 8px;min-height:32px;color:var(--color-error);flex-shrink:0;">&#128465; Loeschen</button>' +
+          '</div>';
         }).join('');
       }
 
@@ -645,7 +650,7 @@
             '<div style="display:flex;gap:6px;margin-top:4px;">' +
               '<button onclick="openDocViewer(\'' + d.id + '\')" class="btn btn-secondary" style="font-size:.7rem;padding:4px 8px;min-height:32px;">Anzeigen</button>' +
               '<button onclick="downloadDoc(\'' + d.id + '\')" class="btn btn-secondary" style="font-size:.7rem;padding:4px 8px;min-height:32px;">Herunterladen</button>' +
-              '<a href="documents.html?id=' + d.id + '&projectId=' + projectId + '" class="btn btn-secondary" style="font-size:.7rem;padding:4px 8px;min-height:32px;">Bearbeiten</a>' +
+              '<button onclick="deleteLinkedRecord(\'documents\',\'' + d.id + '\',\'' + projectId + '\')" class="btn btn-secondary" style="font-size:.7rem;padding:4px 8px;min-height:32px;color:var(--color-error);">&#128465; Loeschen</button>' +
             '</div>' +
           '</div>';
         }).join('');
@@ -661,8 +666,10 @@
           var label = (d.date ? formatDate(d.date) : 'Ohne Datum') +
             ' — ' + esc(d.startLocation || '?') + ' → ' + esc(d.endLocation || '?') +
             ' (' + kmDriven + ' km)';
-          return '<a href="drives.html?id=' + d.id + '&projectId=' + projectId + '" style="display:block;padding:6px 0;border-bottom:1px solid var(--color-border);font-size:.85rem;">' +
-            esc(label) + '</a>';
+          return '<div style="padding:6px 0;border-bottom:1px solid var(--color-border);display:flex;align-items:center;gap:8px;">' +
+            '<a href="drives.html?id=' + d.id + '&projectId=' + projectId + '" style="flex:1;min-width:0;font-size:.85rem;">' + esc(label) + '</a>' +
+            '<button onclick="deleteLinkedRecord(\'drives\',\'' + d.id + '\',\'' + projectId + '\')" class="btn btn-secondary" style="font-size:.7rem;padding:4px 8px;min-height:32px;color:var(--color-error);flex-shrink:0;">&#128465; Loeschen</button>' +
+          '</div>';
         }).join('');
       }
 
@@ -679,11 +686,28 @@
           var label = (c.date ? formatDate(c.date) : 'Ohne Datum') +
             (c.category ? ' — ' + esc(c.category) : '') +
             ' — ' + amount.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
-          return '<a href="costs.html?id=' + c.id + '&projectId=' + projectId + '" style="display:block;padding:6px 0;border-bottom:1px solid var(--color-border);font-size:.85rem;">' +
-            esc(label) + ' <span class="badge ' + badgeClass + '">' + esc(status) + '</span></a>';
+          return '<div style="padding:6px 0;border-bottom:1px solid var(--color-border);display:flex;align-items:center;gap:8px;">' +
+            '<a href="costs.html?id=' + c.id + '&projectId=' + projectId + '" style="flex:1;min-width:0;font-size:.85rem;">' +
+              esc(label) + ' <span class="badge ' + badgeClass + '">' + esc(status) + '</span></a>' +
+            '<button onclick="deleteLinkedRecord(\'costs\',\'' + c.id + '\',\'' + projectId + '\')" class="btn btn-secondary" style="font-size:.7rem;padding:4px 8px;min-height:32px;color:var(--color-error);flex-shrink:0;">&#128465; Loeschen</button>' +
+          '</div>';
         }).join('') +
         '<div style="font-weight:600;padding:8px 0;font-size:.9rem;">Summe: ' +
           costSum.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' }) + '</div>';
+      }
+    }
+
+    function deleteLinkedRecord(collection, id, projectId) {
+      var labels = { reports: 'Einsatzbericht', documents: 'Dokument', drives: 'Fahrt', costs: 'Kosten' };
+      var label = labels[collection] || 'Datensatz';
+      if (!confirm(label + ' wirklich loeschen?')) return;
+      var item = getItemById(collection, id);
+      if (item) {
+        item.deleted = true;
+        item.savedAt = Date.now();
+        saveToLocal(collection, id, item);
+        showToast(label + ' geloescht', 'success');
+        renderLinkedRecords(projectId);
       }
     }
 
