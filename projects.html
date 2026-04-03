@@ -825,16 +825,12 @@
     function openDocViewer(docId) {
       var d = getItemById('documents', docId);
       if (!d) { showToast('Dokument nicht gefunden', 'error'); return; }
-      var dataUrl = d.fileDataUrl || localStorage.getItem('offline_doc_' + docId);
-      var url = dataUrl || d.downloadUrl;
+      var url = d.downloadUrl;
 
-      console.log('[Docs] Anzeigen clicked, id:', docId);
-      console.log('[Docs] downloadUrl:', d.downloadUrl || '(leer)');
-      console.log('[Docs] fileDataUrl:', d.fileDataUrl ? d.fileDataUrl.substring(0, 50) + '...' : '(leer)');
-      console.log('[Docs] resolved URL:', url ? url.substring(0, 80) + '...' : '(keine)');
-      console.log('[Docs] fileType:', d.fileType, 'fileName:', d.fileName);
-
-      if (!url) { showToast('Keine Datei verfuegbar', 'error'); return; }
+      if (!url) {
+        showToast(!isOnline ? 'Offline — Datei nicht verfuegbar' : 'Keine Datei verfuegbar', 'error');
+        return;
+      }
 
       var isImage = (d.fileType || '').indexOf('image') !== -1 || /\.(jpg|jpeg|png|gif|webp|heic)$/i.test(d.fileName || '');
       var isPdf = (d.fileType || '').indexOf('pdf') !== -1 || /\.pdf$/i.test(d.fileName || '');
@@ -875,9 +871,8 @@
     function downloadDoc(docId) {
       var d = getItemById('documents', docId);
       if (!d) { showToast('Dokument nicht gefunden', 'error'); return; }
-      var dataUrl = d.fileDataUrl || localStorage.getItem('offline_doc_' + docId);
-      var url = dataUrl || d.downloadUrl;
-      if (!url) { showToast('Datei nicht verfuegbar', 'error'); return; }
+      var url = d.downloadUrl;
+      if (!url) { showToast('Datei nicht verfuegbar' + (!isOnline ? ' (offline)' : ''), 'error'); return; }
       var a = document.createElement('a');
       a.href = url;
       a.download = d.fileName || 'download';

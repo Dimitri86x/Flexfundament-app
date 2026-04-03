@@ -2,7 +2,7 @@
    Flexfundament App – Service Worker
    ============================================ */
 
-var CACHE_NAME = 'ff-app-v14';
+var CACHE_NAME = 'ff-app-v15';
 var APP_SHELL = [
   './shared.js',
   './shared.css',

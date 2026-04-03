@@ -18,7 +18,6 @@
     .doc-actions .btn{font-size:.7rem;padding:4px 8px;min-height:32px}
     .doc-overlay{position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.9);display:flex;align-items:center;justify-content:center;cursor:pointer}
     .doc-overlay img{max-width:95vw;max-height:95vh;object-fit:contain;border-radius:8px}
-    .offline-saved{color:var(--color-success);font-size:.75rem;display:inline-flex;align-items:center;gap:2px}
     .position-card{border:1px solid var(--color-border);border-radius:var(--radius);padding:12px;margin-bottom:12px;position:relative}
     .position-card .pos-remove{position:absolute;top:8px;right:8px;width:28px;height:28px;background:none;border:1px solid var(--color-border);border-radius:50%;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--color-error)}
     .position-card .pos-remove:hover{background:var(--color-error);color:#fff}
@@ -169,15 +168,8 @@
         var proj = d.projectId ? getItemById('projects', d.projectId) : null;
         var projName = proj ? proj.name : '';
         var isImage = (d.fileType || '').indexOf('image') !== -1 || /\.(jpg|jpeg|png|gif|webp|heic)$/i.test(d.fileName || '');
-        var thumb = isImage && d.fileDataUrl
-          ? '<div class="doc-card-thumb"><img src="' + d.fileDataUrl + '" alt=""></div>'
-          : '<div class="doc-card-thumb">&#128196;<br>PDF</div>';
+        var thumb = '<div class="doc-card-thumb">' + (isImage ? '&#128444;' : '&#128196;') + '</div>';
         var sizeStr = d.fileSize ? formatSize(d.fileSize) : '';
-        var offlineKey = 'offline_doc_' + d.id;
-        var isSavedOffline = !!localStorage.getItem(offlineKey);
-        var offlineLabel = isSavedOffline
-          ? '<span class="offline-saved">&#10003; Offline</span>'
-          : '';
 
         return '<div class="card" style="display:flex;gap:12px;align-items:flex-start;">' +
           thumb +
@@ -187,12 +179,9 @@
               (projName ? ' &middot; ' + esc(projName) : '') +
               (sizeStr ? ' &middot; ' + sizeStr : '') + '</div>' +
             (d.date ? '<div class="card-subtitle">' + formatDate(d.date) + '</div>' : '') +
-            offlineLabel +
             '<div class="doc-actions">' +
               '<button class="btn btn-secondary" onclick="viewDoc(\'' + d.id + '\')">Anzeigen</button>' +
               '<button class="btn btn-secondary" onclick="downloadDoc(\'' + d.id + '\')">Download</button>' +
-              '<button class="btn btn-secondary" onclick="toggleOffline(\'' + d.id + '\',this)" id="offBtn_' + d.id + '">' +
-                (isSavedOffline ? '&#10003; Offline' : '&#128229; Offline speichern') + '</button>' +
               '<button class="btn btn-secondary" onclick="openForm(\'' + d.id + '\')">Bearbeiten</button>' +
             '</div>' +
           '</div>' +
@@ -381,12 +370,14 @@
 
       fileArr.forEach(function(file) {
         var sizeMB = (file.size / (1024 * 1024)).toFixed(1);
-        if (file.size > 10 * 1024 * 1024) {
-          showToast(file.name + ' zu gross (' + sizeMB + ' MB). Maximum ist 10 MB.', 'error');
+        var isImage = file.type.startsWith('image/');
+        var maxSize = isImage ? 10 * 1024 * 1024 : 20 * 1024 * 1024;
+        var maxLabel = isImage ? '10' : '20';
+        if (file.size > maxSize) {
+          showToast(file.name + ' zu gross (' + sizeMB + ' MB). Maximum ist ' + maxLabel + ' MB.', 'error');
           if (--remaining === 0) { savePositionFields(); renderPositions(); }
           return;
         }
-        var isImage = file.type.startsWith('image/');
         if (isImage) {
           compressImage(file).then(function(blob) {
             var reader = new FileReader();
@@ -541,6 +532,12 @@
       var missingType = positions.some(function(p) { return !p.docType; });
       if (missingType) hasWarning = true;
 
+      // Require online for file uploads
+      if (!isOnline) {
+        showToast('Datei-Upload benoetigt Internetverbindung', 'error');
+        return;
+      }
+
       // Disable submit button during upload
       var submitBtn = document.querySelector('#docForm [type="submit"]');
       submitBtn.disabled = true;
@@ -563,7 +560,7 @@
             fileName: f.name || '',
             fileType: f.type || '',
             fileSize: f.size || 0,
-            fileDataUrl: f.dataUrl || '',
+            fileDataUrl: '',
             downloadUrl: f.cloudUrl || ''
           },
           file: f,
@@ -584,7 +581,7 @@
                 fileName: f.name || '',
                 fileType: f.type || '',
                 fileSize: f.size || 0,
-                fileDataUrl: f.dataUrl || '',
+                fileDataUrl: '',
                 downloadUrl: ''
               },
               file: f,
@@ -704,11 +701,10 @@
       var d = getItemById('documents', docId);
       if (!d) { showToast('Dokument nicht gefunden', 'error'); return; }
 
-      var dataUrl = d.fileDataUrl || localStorage.getItem('offline_doc_' + docId);
-      var url = dataUrl || d.downloadUrl;
+      var url = d.downloadUrl;
 
       if (!url) {
-        if (!isOnline) showToast('Offline — Datei nicht lokal gespeichert', 'error');
+        if (!isOnline) showToast('Offline — Datei nicht verfuegbar', 'error');
         else showToast('Keine Datei verfuegbar', 'error');
         return;
       }
@@ -744,8 +740,7 @@
       var d = getItemById('documents', docId);
       if (!d) { showToast('Dokument nicht gefunden', 'error'); return; }
 
-      var dataUrl = d.fileDataUrl || localStorage.getItem('offline_doc_' + docId);
-      var url = dataUrl || d.downloadUrl;
+      var url = d.downloadUrl;
       if (!url) {
         showToast('Datei nicht verfuegbar' + (!isOnline ? ' (offline)' : ''), 'error');
         return;
@@ -754,64 +749,6 @@
       var a = document.createElement('a');
       a.href = url; a.download = d.fileName || 'download';
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    }
-
-    function toggleOffline(docId, btn) {
-      var d = getItemById('documents', docId);
-      if (!d) return;
-
-      var offlineKey = 'offline_doc_' + docId;
-      var existing = localStorage.getItem(offlineKey);
-
-      if (existing) {
-        localStorage.removeItem(offlineKey);
-        btn.innerHTML = '&#128229; Offline speichern';
-        showToast('Offline-Kopie entfernt', 'success');
-        renderList();
-        return;
-      }
-
-      var dataUrl = d.fileDataUrl;
-      if (!dataUrl && d.downloadUrl && isOnline) {
-        btn.textContent = 'Lade...';
-        btn.disabled = true;
-        fetch(d.downloadUrl).then(function(resp) { return resp.blob(); })
-          .then(function(blob) {
-            if (blob.size > 2 * 1024 * 1024) {
-              showToast('Datei zu gross fuer Offline-Speicherung (max 2 MB)', 'error');
-              btn.innerHTML = '&#128229; Offline speichern'; btn.disabled = false; return;
-            }
-            var reader = new FileReader();
-            reader.onload = function() {
-              try {
-                localStorage.setItem(offlineKey, reader.result);
-                btn.innerHTML = '&#10003; Offline';
-                showToast('Offline gespeichert', 'success');
-                renderList();
-              } catch (e) {
-                showToast('Speicher voll — kann nicht offline speichern', 'error');
-                btn.innerHTML = '&#128229; Offline speichern';
-              }
-              btn.disabled = false;
-            };
-            reader.readAsDataURL(blob);
-          })
-          .catch(function() {
-            showToast('Download fehlgeschlagen', 'error');
-            btn.innerHTML = '&#128229; Offline speichern'; btn.disabled = false;
-          });
-        return;
-      }
-
-      if (!dataUrl) { showToast('Keine Datei zum Offline-Speichern vorhanden', 'error'); return; }
-      if (dataUrl.length > 2 * 1024 * 1024) { showToast('Datei zu gross fuer Offline-Speicherung (max 2 MB)', 'error'); return; }
-
-      try {
-        localStorage.setItem(offlineKey, dataUrl);
-        btn.innerHTML = '&#10003; Offline';
-        showToast('Offline gespeichert', 'success');
-        renderList();
-      } catch (e) { showToast('Speicher voll — kann nicht offline speichern', 'error'); }
     }
 
     function showImageOverlay(src) {

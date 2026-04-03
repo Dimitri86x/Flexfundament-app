@@ -113,6 +113,9 @@ function initApp(callback) {
 
   // Initialize online/offline detection
   initOnlineStatus();
+
+  // Clean up Base64 bloat from localStorage on startup
+  cleanupLocalStorage();
 }
 
 /**
@@ -243,15 +246,83 @@ function saveToLocal(collection, id, data) {
   data.savedBy = user ? user.uid : 'anonymous';
   if (data.deleted === undefined) data.deleted = false;
 
-  var store = loadFromLocal(collection);
-  store[id] = data;
-  localStorage.setItem('ff_' + collection, JSON.stringify(store));
-
+  // Sync full data (with Base64) to Firebase if online
   if (isOnline) {
     syncItemToFirebase(collection, id, data);
   }
 
+  // Strip Base64 data before writing to localStorage (5MB limit)
+  var localData = stripBase64(JSON.parse(JSON.stringify(data)));
+
+  var store = loadFromLocal(collection);
+  store[id] = localData;
+  localStorage.setItem('ff_' + collection, JSON.stringify(store));
+
   return data;
+}
+
+/**
+ * Remove Base64 data fields from an object before localStorage storage.
+ * Keeps URLs and metadata, removes large binary content.
+ */
+function stripBase64(obj) {
+  if (!obj || typeof obj !== 'object') return obj;
+
+  // Strip known Base64 fields on the object itself
+  if (typeof obj.fileDataUrl === 'string' && obj.fileDataUrl.length > 200) {
+    obj.fileDataUrl = '';
+  }
+  if (typeof obj.dataUrl === 'string' && obj.dataUrl.length > 200) {
+    obj.dataUrl = '';
+  }
+
+  // Strip Base64 from arrays of files/photos
+  ['photos', 'files', 'accessFiles', 'obstaclePhotos', 'reportPhotos'].forEach(function(key) {
+    if (Array.isArray(obj[key])) {
+      obj[key] = obj[key].map(function(item) {
+        if (item && typeof item.dataUrl === 'string' && item.dataUrl.length > 200) {
+          item = JSON.parse(JSON.stringify(item));
+          item.dataUrl = '';
+        }
+        return item;
+      });
+    }
+  });
+
+  return obj;
+}
+
+/**
+ * Clean up existing localStorage data by removing Base64 bloat.
+ * Called once on app start.
+ */
+function cleanupLocalStorage() {
+  var collections = ['documents', 'reports', 'projects', 'drives', 'costs'];
+  var cleaned = false;
+  collections.forEach(function(col) {
+    var store = loadFromLocal(col);
+    var ids = Object.keys(store);
+    ids.forEach(function(id) {
+      var item = store[id];
+      var before = JSON.stringify(item).length;
+      store[id] = stripBase64(item);
+      if (JSON.stringify(store[id]).length < before) cleaned = true;
+    });
+    if (cleaned) {
+      try { localStorage.setItem('ff_' + col, JSON.stringify(store)); }
+      catch (e) { /* ignore */ }
+    }
+  });
+  // Remove old offline_doc_ keys
+  var keysToRemove = [];
+  for (var i = 0; i < localStorage.length; i++) {
+    var key = localStorage.key(i);
+    if (key && key.indexOf('offline_doc_') === 0) keysToRemove.push(key);
+  }
+  keysToRemove.forEach(function(k) { localStorage.removeItem(k); });
+  if (cleaned || keysToRemove.length) {
+    console.log('[App] localStorage cleaned up');
+  }
 }
 
 /**

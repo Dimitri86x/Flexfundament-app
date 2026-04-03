@@ -384,12 +384,14 @@ function setupAllUploads() {
 function handleFiles(e, onEach) {
   var files = Array.from(e.target.files);
   files.forEach(function(file) {
-    if (file.size > 10 * 1024 * 1024) {
+    var isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+    var maxSize = isPdf ? 20 * 1024 * 1024 : 10 * 1024 * 1024;
+    var maxLabel = isPdf ? '20' : '10';
+    if (file.size > maxSize) {
       var sizeMB = (file.size / (1024 * 1024)).toFixed(1);
-      showToast(file.name + ' zu gross (' + sizeMB + ' MB). Maximum ist 10 MB.', 'error');
+      showToast(file.name + ' zu gross (' + sizeMB + ' MB). Maximum ist ' + maxLabel + ' MB.', 'error');
       return;
     }
-    var isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
     if (isPdf) {
       var reader = new FileReader();
       reader.onload = function() { onEach({ dataUrl: reader.result, name: file.name, type: 'pdf' }); };

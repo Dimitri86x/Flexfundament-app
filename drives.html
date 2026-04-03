@@ -388,12 +388,14 @@
         if (!el) return;
         el.addEventListener('change', function(e) {
           Array.from(e.target.files).forEach(function(file) {
-            if (file.size > 10 * 1024 * 1024) {
+            var isImage = file.type.startsWith('image/');
+            var maxSize = isImage ? 10 * 1024 * 1024 : 20 * 1024 * 1024;
+            var maxLabel = isImage ? '10' : '20';
+            if (file.size > maxSize) {
               var sizeMB = (file.size / (1024 * 1024)).toFixed(1);
-              showToast(file.name + ' zu gross (' + sizeMB + ' MB). Maximum ist 10 MB.', 'error');
+              showToast(file.name + ' zu gross (' + sizeMB + ' MB). Maximum ist ' + maxLabel + ' MB.', 'error');
               return;
             }
-            var isImage = file.type.startsWith('image/');
             if (isImage) {
               compressImage(file).then(function(blob) {
                 var reader = new FileReader();
