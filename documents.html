@@ -442,17 +442,31 @@
     // =============================================
 
     function uploadToStorage(projectId, docId, dataUrl) {
-      if (!isOnline || !dataUrl) return Promise.resolve(null);
+      if (!isOnline || !dataUrl) {
+        console.log('[Docs] Skip upload: online=', isOnline, 'hasData=', !!dataUrl);
+        return Promise.resolve(null);
+      }
       try {
-        var ref = storage.ref('files/' + projectId + '/' + docId);
+        var storagePath = 'files/' + projectId + '/' + docId;
+        console.log('[Docs] Storage upload starting:', storagePath);
+        var ref = storage.ref(storagePath);
         var parts = dataUrl.split(',');
         var mime = parts[0].match(/:(.*?);/)[1];
         var bstr = atob(parts[1]);
         var arr = new Uint8Array(bstr.length);
         for (var i = 0; i < bstr.length; i++) arr[i] = bstr.charCodeAt(i);
         var blob = new Blob([arr], { type: mime });
-        return ref.put(blob).then(function(snap) { return snap.ref.getDownloadURL(); })
-          .catch(function(err) { console.error('[Docs] Upload error:', err); return null; });
+        console.log('[Docs] Uploading blob:', blob.size, 'bytes, type:', mime);
+        return ref.put(blob).then(function(snap) {
+          console.log('[Docs] Upload snap received, getting downloadURL...');
+          return snap.ref.getDownloadURL();
+        }).then(function(url) {
+          console.log('[Docs] Got downloadURL:', url);
+          return url;
+        }).catch(function(err) {
+          console.error('[Docs] Storage upload error:', err);
+          return null;
+        });
       } catch (e) {
         console.error('[Docs] Upload prep error:', e);
         return Promise.resolve(null);
@@ -467,96 +481,132 @@
       e.preventDefault();
       savePositionFields();
 
-      try {
-        clearWarnings();
-        var hasWarning = false;
-        function warn(id, cond) {
-          var el = document.getElementById(id);
-          if (el) el.classList.toggle('visible', cond);
-          if (cond) hasWarning = true;
+      clearWarnings();
+      var hasWarning = false;
+      function warn(id, cond) {
+        var el = document.getElementById(id);
+        if (el) el.classList.toggle('visible', cond);
+        if (cond) hasWarning = true;
+      }
+
+      var projectId = document.getElementById('fProject').value;
+      warn('wProject', !projectId);
+
+      var proj = projectId ? getItemById('projects', projectId) : null;
+      var date = document.getElementById('fDate').value;
+
+      var hasAnyFiles = positions.some(function(p) { return p.files.length > 0; });
+      if (!hasAnyFiles) {
+        showToast('Bitte mindestens eine Datei hochladen', 'error');
+        return;
+      }
+      var missingType = positions.some(function(p) { return !p.docType; });
+      if (missingType) hasWarning = true;
+
+      // Disable submit button during upload
+      var submitBtn = document.querySelector('#docForm [type="submit"]');
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Wird hochgeladen...';
+
+      var uploadPromises = [];
+
+      if (isEditMode && currentId) {
+        // Edit mode: save single doc
+        var pos = positions[0] || {};
+        var f = (pos.files || [])[0] || {};
+        var editData = {
+          projectId: projectId,
+          projectName: proj ? proj.name : '',
+          docType: pos.docType || '',
+          description: pos.description || '',
+          date: date,
+          fileName: f.name || '',
+          fileType: f.type || '',
+          fileSize: f.size || 0,
+          fileDataUrl: f.dataUrl || '',
+          downloadUrl: f.cloudUrl || ''
+        };
+
+        // Upload first, then save with URL
+        if (isOnline && f.dataUrl && projectId && !f.cloudUrl) {
+          console.log('[Docs] Uploading file to Storage...', f.name);
+          var p = uploadToStorage(projectId, currentId, f.dataUrl).then(function(url) {
+            if (url) {
+              console.log('[Docs] Upload complete, downloadURL:', url);
+              editData.downloadUrl = url;
+            }
+          });
+          uploadPromises.push(p);
         }
 
-        var projectId = document.getElementById('fProject').value;
-        warn('wProject', !projectId);
-
-        var proj = projectId ? getItemById('projects', projectId) : null;
-        var date = document.getElementById('fDate').value;
-
-        // Check positions have files and docType
-        var hasAnyFiles = positions.some(function(p) { return p.files.length > 0; });
-        if (!hasAnyFiles) {
-          showToast('Bitte mindestens eine Datei hochladen', 'error');
-          return;
-        }
-        var missingType = positions.some(function(p) { return !p.docType; });
-        if (missingType) hasWarning = true;
-
-        if (isEditMode && currentId) {
-          // Edit mode: save single doc (first file of first position)
-          var pos = positions[0] || {};
-          var f = (pos.files || [])[0] || {};
-          var data = {
-            projectId: projectId,
-            projectName: proj ? proj.name : '',
-            docType: pos.docType || '',
-            description: pos.description || '',
-            date: date,
-            fileName: f.name || '',
-            fileType: f.type || '',
-            fileSize: f.size || 0,
-            fileDataUrl: f.dataUrl || '',
-            downloadUrl: f.cloudUrl || ''
-          };
-          try { saveToLocal('documents', currentId, data); }
-          catch (err) { data.fileDataUrl = ''; saveToLocal('documents', currentId, data); }
-
+        Promise.all(uploadPromises).then(function() {
+          console.log('[Docs] Saving to DB with data:', { fileName: editData.fileName, downloadUrl: editData.downloadUrl, hasDataUrl: !!editData.fileDataUrl });
+          try { saveToLocal('documents', currentId, editData); }
+          catch (err) { editData.fileDataUrl = ''; saveToLocal('documents', currentId, editData); }
           showToast(hasWarning ? 'Gespeichert (fehlende Pflichtfelder)' : 'Dokument gespeichert', hasWarning ? 'warning' : 'success');
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Speichern';
+        }).catch(function(err) {
+          console.error('[Docs] Save error:', err);
+          // Save without URL as fallback
+          try { saveToLocal('documents', currentId, editData); }
+          catch (err2) { editData.fileDataUrl = ''; saveToLocal('documents', currentId, editData); }
+          showToast('Gespeichert (Upload fehlgeschlagen)', 'warning');
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Speichern';
+        });
 
-          if (isOnline && f.dataUrl && projectId && !f.cloudUrl) {
-            uploadToStorage(projectId, currentId, f.dataUrl).then(function(url) {
-              if (url) {
-                var item = getItemById('documents', currentId);
-                if (item) { item.downloadUrl = url; saveToLocal('documents', currentId, item); }
-              }
-            });
-          }
-        } else {
-          // New mode: each position's each file becomes its own record
+      } else {
+        // New mode: each position's each file becomes its own record
+        // First upload all files, then save records with URLs
+        var recordsToSave = [];
+        positions.forEach(function(pos) {
+          if (pos.files.length === 0) return;
+          pos.files.forEach(function(f) {
+            var docId = generateId();
+            var data = {
+              projectId: projectId,
+              projectName: proj ? proj.name : '',
+              docType: pos.docType || '',
+              description: pos.description || '',
+              date: date,
+              fileName: f.name || '',
+              fileType: f.type || '',
+              fileSize: f.size || 0,
+              fileDataUrl: f.dataUrl || '',
+              downloadUrl: ''
+            };
+            recordsToSave.push({ docId: docId, data: data, file: f });
+
+            if (isOnline && f.dataUrl && projectId) {
+              console.log('[Docs] Uploading file to Storage...', f.name);
+              var p = uploadToStorage(projectId, docId, f.dataUrl).then(function(url) {
+                if (url) {
+                  console.log('[Docs] Upload complete, downloadURL:', url);
+                  data.downloadUrl = url;
+                }
+              });
+              uploadPromises.push(p);
+            }
+          });
+        });
+
+        Promise.all(uploadPromises).then(function() {
+          // Now save all records with their download URLs
           var savedIds = [];
-          positions.forEach(function(pos) {
-            if (pos.files.length === 0) return;
-            pos.files.forEach(function(f) {
-              var docId = generateId();
-              var data = {
-                projectId: projectId,
-                projectName: proj ? proj.name : '',
-                docType: pos.docType || '',
-                description: pos.description || '',
-                date: date,
-                fileName: f.name || '',
-                fileType: f.type || '',
-                fileSize: f.size || 0,
-                fileDataUrl: f.dataUrl || '',
-                downloadUrl: ''
-              };
-              try { saveToLocal('documents', docId, data); }
-              catch (err) { data.fileDataUrl = ''; saveToLocal('documents', docId, data); }
-              savedIds.push(docId);
-
-              if (isOnline && f.dataUrl && projectId) {
-                uploadToStorage(projectId, docId, f.dataUrl).then(function(url) {
-                  if (url) {
-                    var item = getItemById('documents', docId);
-                    if (item) { item.downloadUrl = url; saveToLocal('documents', docId, item); }
-                  }
-                });
-              }
-            });
+          recordsToSave.forEach(function(rec) {
+            console.log('[Docs] Saving to DB:', { id: rec.docId, fileName: rec.data.fileName, downloadUrl: rec.data.downloadUrl, hasDataUrl: !!rec.data.fileDataUrl });
+            try { saveToLocal('documents', rec.docId, rec.data); }
+            catch (err) { rec.data.fileDataUrl = ''; saveToLocal('documents', rec.docId, rec.data); }
+            savedIds.push(rec.docId);
           });
 
           var count = savedIds.length;
           showToast(count + ' Dokument' + (count > 1 ? 'e' : '') + ' gespeichert' +
             (hasWarning ? ' (fehlende Pflichtfelder)' : ''), hasWarning ? 'warning' : 'success');
+
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Speichern';
 
           var urlProjId = getUrlParam('projectId');
           if (urlProjId) {
@@ -571,12 +621,19 @@
             document.getElementById('btnAddPosition').style.display = 'none';
           } else {
             showList();
-            return;
           }
-        }
-      } catch (err) {
-        console.error('[Docs] Save error:', err);
-        showToast('Fehler: ' + err.message, 'error');
+        }).catch(function(err) {
+          console.error('[Docs] Upload error:', err);
+          // Save records without URLs as fallback
+          recordsToSave.forEach(function(rec) {
+            try { saveToLocal('documents', rec.docId, rec.data); }
+            catch (err2) { rec.data.fileDataUrl = ''; saveToLocal('documents', rec.docId, rec.data); }
+          });
+          showToast('Gespeichert (einige Uploads fehlgeschlagen)', 'warning');
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Speichern';
+          showList();
+        });
       }
     });
 
