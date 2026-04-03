@@ -30,6 +30,11 @@
     .pos-file-name{font-size:.8rem;word-break:break-all}
     .pos-file-size{font-size:.7rem;color:var(--color-text-secondary)}
     .pos-file-remove{width:24px;height:24px;border:none;background:none;color:var(--color-error);font-size:1rem;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+    .upload-progress{margin-top:8px;display:none}
+    .upload-progress.active{display:block}
+    .upload-progress-bar{height:6px;background:var(--color-border);border-radius:3px;overflow:hidden}
+    .upload-progress-fill{height:100%;background:var(--color-primary);border-radius:3px;width:0%;transition:width .2s}
+    .upload-progress-text{font-size:.75rem;color:var(--color-text-secondary);margin-top:4px}
   </style>
 </head>
 <body>
@@ -69,6 +74,11 @@
       <div id="positionsContainer"></div>
 
       <button type="button" class="btn btn-secondary btn-block" id="btnAddPosition" style="margin-bottom:16px;">+ Weitere Position hinzufuegen</button>
+
+      <div class="upload-progress" id="uploadProgress">
+        <div class="upload-progress-bar"><div class="upload-progress-fill" id="uploadProgressFill"></div></div>
+        <div class="upload-progress-text" id="uploadProgressText">Wird hochgeladen...</div>
+      </div>
 
       <button type="submit" class="btn btn-primary btn-block">Speichern</button>
       <button type="button" class="btn btn-danger btn-block mt-sm" id="btnDelete" style="display:none;">Loeschen</button>
@@ -370,9 +380,10 @@
       if (remaining === 0) return;
 
       fileArr.forEach(function(file) {
-        if (file.size > 5 * 1024 * 1024) {
-          showToast(file.name + ' ist zu gross (max. 5 MB)', 'error');
-          if (--remaining === 0) renderPosFiles(posIdx);
+        var sizeMB = (file.size / (1024 * 1024)).toFixed(1);
+        if (file.size > 10 * 1024 * 1024) {
+          showToast(file.name + ' zu gross (' + sizeMB + ' MB). Maximum ist 10 MB.', 'error');
+          if (--remaining === 0) { savePositionFields(); renderPositions(); }
           return;
         }
         var isImage = file.type.startsWith('image/');
@@ -381,12 +392,8 @@
             var reader = new FileReader();
             reader.onload = function() {
               positions[posIdx].files.push({ dataUrl: reader.result, name: file.name, type: blob.type || file.type, size: blob.size, originalSize: blob._originalSize || file.size });
-              // Auto-set docType to Foto if not yet chosen
               if (!positions[posIdx].docType) positions[posIdx].docType = 'Foto';
-              if (--remaining === 0) {
-                savePositionFields();
-                renderPositions();
-              }
+              if (--remaining === 0) { savePositionFields(); renderPositions(); }
             };
             reader.readAsDataURL(blob);
           });
@@ -394,10 +401,7 @@
           var reader = new FileReader();
           reader.onload = function() {
             positions[posIdx].files.push({ dataUrl: reader.result, name: file.name, type: file.type, size: file.size });
-            if (--remaining === 0) {
-              savePositionFields();
-              renderPositions();
-            }
+            if (--remaining === 0) { savePositionFields(); renderPositions(); }
           };
           reader.readAsDataURL(file);
         }
@@ -441,7 +445,24 @@
     //  FIREBASE STORAGE
     // =============================================
 
-    function uploadToStorage(projectId, docId, dataUrl) {
+    var uploadCurrent = 0;
+    var uploadTotal = 0;
+
+    function showUploadProgress(percent, text) {
+      var el = document.getElementById('uploadProgress');
+      var fill = document.getElementById('uploadProgressFill');
+      var txt = document.getElementById('uploadProgressText');
+      el.classList.add('active');
+      fill.style.width = Math.round(percent) + '%';
+      txt.textContent = text || ('Wird hochgeladen... ' + Math.round(percent) + '%');
+    }
+
+    function hideUploadProgress() {
+      document.getElementById('uploadProgress').classList.remove('active');
+      document.getElementById('uploadProgressFill').style.width = '0%';
+    }
+
+    function uploadToStorage(projectId, docId, dataUrl, fileIndex, totalFiles) {
       if (!isOnline || !dataUrl) {
         console.log('[Docs] Skip upload: online=', isOnline, 'hasData=', !!dataUrl);
         return Promise.resolve(null);
@@ -456,16 +477,33 @@
         var arr = new Uint8Array(bstr.length);
         for (var i = 0; i < bstr.length; i++) arr[i] = bstr.charCodeAt(i);
         var blob = new Blob([arr], { type: mime });
+        var sizeMB = (blob.size / (1024 * 1024)).toFixed(1);
         console.log('[Docs] Uploading blob:', blob.size, 'bytes, type:', mime);
-        return ref.put(blob).then(function(snap) {
-          console.log('[Docs] Upload snap received, getting downloadURL...');
-          return snap.ref.getDownloadURL();
-        }).then(function(url) {
-          console.log('[Docs] Got downloadURL:', url);
-          return url;
-        }).catch(function(err) {
-          console.error('[Docs] Storage upload error:', err);
-          return null;
+
+        var fileLabel = totalFiles > 1 ? 'Datei ' + fileIndex + '/' + totalFiles + ' — ' : '';
+        var task = ref.put(blob);
+
+        return new Promise(function(resolve) {
+          task.on('state_changed',
+            function(snapshot) {
+              var filePercent = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+              var overallPercent = totalFiles > 1
+                ? (((fileIndex - 1) / totalFiles) * 100) + (filePercent / totalFiles)
+                : filePercent;
+              showUploadProgress(overallPercent, fileLabel + Math.round(filePercent) + '% (' + sizeMB + ' MB)');
+            },
+            function(error) {
+              console.error('[Docs] Storage upload error:', error);
+              resolve(null);
+            },
+            function() {
+              console.log('[Docs] Upload complete, getting downloadURL...');
+              task.snapshot.ref.getDownloadURL().then(function(url) {
+                console.log('[Docs] Got downloadURL:', url);
+                resolve(url);
+              }).catch(function() { resolve(null); });
+            }
+          );
         });
       } catch (e) {
         console.error('[Docs] Upload prep error:', e);
@@ -508,133 +546,121 @@
       submitBtn.disabled = true;
       submitBtn.textContent = 'Wird hochgeladen...';
 
-      var uploadPromises = [];
+      // Build list of records to save (with file references)
+      var recordsToSave = [];
 
       if (isEditMode && currentId) {
-        // Edit mode: save single doc
         var pos = positions[0] || {};
         var f = (pos.files || [])[0] || {};
-        var editData = {
-          projectId: projectId,
-          projectName: proj ? proj.name : '',
-          docType: pos.docType || '',
-          description: pos.description || '',
-          date: date,
-          fileName: f.name || '',
-          fileType: f.type || '',
-          fileSize: f.size || 0,
-          fileDataUrl: f.dataUrl || '',
-          downloadUrl: f.cloudUrl || ''
-        };
-
-        // Upload first, then save with URL
-        if (isOnline && f.dataUrl && projectId && !f.cloudUrl) {
-          console.log('[Docs] Uploading file to Storage...', f.name);
-          var p = uploadToStorage(projectId, currentId, f.dataUrl).then(function(url) {
-            if (url) {
-              console.log('[Docs] Upload complete, downloadURL:', url);
-              editData.downloadUrl = url;
-            }
-          });
-          uploadPromises.push(p);
-        }
-
-        Promise.all(uploadPromises).then(function() {
-          console.log('[Docs] Saving to DB with data:', { fileName: editData.fileName, downloadUrl: editData.downloadUrl, hasDataUrl: !!editData.fileDataUrl });
-          try { saveToLocal('documents', currentId, editData); }
-          catch (err) { editData.fileDataUrl = ''; saveToLocal('documents', currentId, editData); }
-          showToast(hasWarning ? 'Gespeichert (fehlende Pflichtfelder)' : 'Dokument gespeichert', hasWarning ? 'warning' : 'success');
-          submitBtn.disabled = false;
-          submitBtn.textContent = 'Speichern';
-        }).catch(function(err) {
-          console.error('[Docs] Save error:', err);
-          // Save without URL as fallback
-          try { saveToLocal('documents', currentId, editData); }
-          catch (err2) { editData.fileDataUrl = ''; saveToLocal('documents', currentId, editData); }
-          showToast('Gespeichert (Upload fehlgeschlagen)', 'warning');
-          submitBtn.disabled = false;
-          submitBtn.textContent = 'Speichern';
+        recordsToSave.push({
+          docId: currentId,
+          data: {
+            projectId: projectId,
+            projectName: proj ? proj.name : '',
+            docType: pos.docType || '',
+            description: pos.description || '',
+            date: date,
+            fileName: f.name || '',
+            fileType: f.type || '',
+            fileSize: f.size || 0,
+            fileDataUrl: f.dataUrl || '',
+            downloadUrl: f.cloudUrl || ''
+          },
+          file: f,
+          needsUpload: isOnline && f.dataUrl && projectId && !f.cloudUrl
         });
-
       } else {
-        // New mode: each position's each file becomes its own record
-        // First upload all files, then save records with URLs
-        var recordsToSave = [];
         positions.forEach(function(pos) {
           if (pos.files.length === 0) return;
           pos.files.forEach(function(f) {
-            var docId = generateId();
-            var data = {
-              projectId: projectId,
-              projectName: proj ? proj.name : '',
-              docType: pos.docType || '',
-              description: pos.description || '',
-              date: date,
-              fileName: f.name || '',
-              fileType: f.type || '',
-              fileSize: f.size || 0,
-              fileDataUrl: f.dataUrl || '',
-              downloadUrl: ''
-            };
-            recordsToSave.push({ docId: docId, data: data, file: f });
+            recordsToSave.push({
+              docId: generateId(),
+              data: {
+                projectId: projectId,
+                projectName: proj ? proj.name : '',
+                docType: pos.docType || '',
+                description: pos.description || '',
+                date: date,
+                fileName: f.name || '',
+                fileType: f.type || '',
+                fileSize: f.size || 0,
+                fileDataUrl: f.dataUrl || '',
+                downloadUrl: ''
+              },
+              file: f,
+              needsUpload: isOnline && f.dataUrl && projectId
+            });
+          });
+        });
+      }
 
-            if (isOnline && f.dataUrl && projectId) {
-              console.log('[Docs] Uploading file to Storage...', f.name);
-              var p = uploadToStorage(projectId, docId, f.dataUrl).then(function(url) {
-                if (url) {
-                  console.log('[Docs] Upload complete, downloadURL:', url);
-                  data.downloadUrl = url;
-                }
-              });
-              uploadPromises.push(p);
+      // Count uploads for progress
+      var uploadsNeeded = recordsToSave.filter(function(r) { return r.needsUpload; });
+      var totalUploads = uploadsNeeded.length;
+
+      // Sequential upload chain for proper progress
+      var uploadChain = Promise.resolve();
+      var uploadIndex = 0;
+      recordsToSave.forEach(function(rec) {
+        if (!rec.needsUpload) return;
+        uploadChain = uploadChain.then(function() {
+          uploadIndex++;
+          console.log('[Docs] Uploading file to Storage...', rec.data.fileName);
+          return uploadToStorage(projectId, rec.docId, rec.file.dataUrl, uploadIndex, totalUploads).then(function(url) {
+            if (url) {
+              console.log('[Docs] Upload complete, downloadURL:', url);
+              rec.data.downloadUrl = url;
             }
           });
         });
+      });
 
-        Promise.all(uploadPromises).then(function() {
-          // Now save all records with their download URLs
-          var savedIds = [];
-          recordsToSave.forEach(function(rec) {
-            console.log('[Docs] Saving to DB:', { id: rec.docId, fileName: rec.data.fileName, downloadUrl: rec.data.downloadUrl, hasDataUrl: !!rec.data.fileDataUrl });
-            try { saveToLocal('documents', rec.docId, rec.data); }
-            catch (err) { rec.data.fileDataUrl = ''; saveToLocal('documents', rec.docId, rec.data); }
-            savedIds.push(rec.docId);
-          });
-
-          var count = savedIds.length;
-          showToast(count + ' Dokument' + (count > 1 ? 'e' : '') + ' gespeichert' +
-            (hasWarning ? ' (fehlende Pflichtfelder)' : ''), hasWarning ? 'warning' : 'success');
-
-          submitBtn.disabled = false;
-          submitBtn.textContent = 'Speichern';
-
-          var urlProjId = getUrlParam('projectId');
-          if (urlProjId) {
-            window.location.href = 'projects.html?id=' + urlProjId;
-            return;
-          } else if (savedIds.length === 1) {
-            currentId = savedIds[0];
-            isEditMode = true;
-            history.replaceState(null, '', 'documents.html?id=' + currentId);
-            document.getElementById('formTitle').textContent = 'Dokument bearbeiten';
-            document.getElementById('btnDelete').style.display = '';
-            document.getElementById('btnAddPosition').style.display = 'none';
-          } else {
-            showList();
-          }
-        }).catch(function(err) {
-          console.error('[Docs] Upload error:', err);
-          // Save records without URLs as fallback
-          recordsToSave.forEach(function(rec) {
-            try { saveToLocal('documents', rec.docId, rec.data); }
-            catch (err2) { rec.data.fileDataUrl = ''; saveToLocal('documents', rec.docId, rec.data); }
-          });
-          showToast('Gespeichert (einige Uploads fehlgeschlagen)', 'warning');
-          submitBtn.disabled = false;
-          submitBtn.textContent = 'Speichern';
-          showList();
+      uploadChain.then(function() {
+        hideUploadProgress();
+        // Save all records
+        var savedIds = [];
+        recordsToSave.forEach(function(rec) {
+          console.log('[Docs] Saving to DB:', { id: rec.docId, fileName: rec.data.fileName, downloadUrl: rec.data.downloadUrl, hasDataUrl: !!rec.data.fileDataUrl });
+          try { saveToLocal('documents', rec.docId, rec.data); }
+          catch (err) { rec.data.fileDataUrl = ''; saveToLocal('documents', rec.docId, rec.data); }
+          savedIds.push(rec.docId);
         });
-      }
+
+        var count = savedIds.length;
+        showToast(count + ' Dokument' + (count > 1 ? 'e' : '') + ' gespeichert' +
+          (hasWarning ? ' (fehlende Pflichtfelder)' : ''), hasWarning ? 'warning' : 'success');
+
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Speichern';
+
+        if (isEditMode) return; // stay on edit page
+
+        var urlProjId = getUrlParam('projectId');
+        if (urlProjId) {
+          window.location.href = 'projects.html?id=' + urlProjId;
+        } else if (savedIds.length === 1) {
+          currentId = savedIds[0];
+          isEditMode = true;
+          history.replaceState(null, '', 'documents.html?id=' + currentId);
+          document.getElementById('formTitle').textContent = 'Dokument bearbeiten';
+          document.getElementById('btnDelete').style.display = '';
+          document.getElementById('btnAddPosition').style.display = 'none';
+        } else {
+          showList();
+        }
+      }).catch(function(err) {
+        console.error('[Docs] Upload error:', err);
+        hideUploadProgress();
+        // Save records without URLs as fallback
+        recordsToSave.forEach(function(rec) {
+          try { saveToLocal('documents', rec.docId, rec.data); }
+          catch (err2) { rec.data.fileDataUrl = ''; saveToLocal('documents', rec.docId, rec.data); }
+        });
+        showToast('Gespeichert (einige Uploads fehlgeschlagen)', 'warning');
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Speichern';
+        if (!isEditMode) showList();
+      });
     });
 
     // =============================================

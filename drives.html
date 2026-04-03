@@ -388,18 +388,29 @@
         if (!el) return;
         el.addEventListener('change', function(e) {
           Array.from(e.target.files).forEach(function(file) {
-            if (file.size > 5 * 1024 * 1024) {
-              showToast(file.name + ' ist zu gross (max. 5 MB)', 'error');
+            if (file.size > 10 * 1024 * 1024) {
+              var sizeMB = (file.size / (1024 * 1024)).toFixed(1);
+              showToast(file.name + ' zu gross (' + sizeMB + ' MB). Maximum ist 10 MB.', 'error');
               return;
             }
-            compressImage(file).then(function(blob) {
+            var isImage = file.type.startsWith('image/');
+            if (isImage) {
+              compressImage(file).then(function(blob) {
+                var reader = new FileReader();
+                reader.onload = function() {
+                  photos.push({ dataUrl: reader.result, name: file.name, type: file.type });
+                  renderPhotos();
+                };
+                reader.readAsDataURL(blob);
+              });
+            } else {
               var reader = new FileReader();
               reader.onload = function() {
                 photos.push({ dataUrl: reader.result, name: file.name, type: file.type });
                 renderPhotos();
               };
-              reader.readAsDataURL(blob);
-            });
+              reader.readAsDataURL(file);
+            }
           });
           e.target.value = '';
         });

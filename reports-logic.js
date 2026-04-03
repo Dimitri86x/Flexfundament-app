@@ -384,6 +384,11 @@ function setupAllUploads() {
 function handleFiles(e, onEach) {
   var files = Array.from(e.target.files);
   files.forEach(function(file) {
+    if (file.size > 10 * 1024 * 1024) {
+      var sizeMB = (file.size / (1024 * 1024)).toFixed(1);
+      showToast(file.name + ' zu gross (' + sizeMB + ' MB). Maximum ist 10 MB.', 'error');
+      return;
+    }
     var isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
     if (isPdf) {
       var reader = new FileReader();
