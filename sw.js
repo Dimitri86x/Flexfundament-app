@@ -2,7 +2,7 @@
    Flexfundament App – Service Worker
    ============================================ */
 
-var CACHE_NAME = 'ff-app-v11';
+var CACHE_NAME = 'ff-app-v12';
 var APP_SHELL = [
   './shared.js',
   './shared.css',
@@ -11,7 +11,8 @@ var APP_SHELL = [
   './reports.html',
   './reports-logic.js',
   './documents.html',
-  './drives.html'
+  './drives.html',
+  './costs.html'
 ];
 
 // Install: cache only static assets (NOT HTML pages)

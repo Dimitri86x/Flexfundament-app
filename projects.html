@@ -667,8 +667,24 @@
       }
 
       var costs = getActiveItems('costs').filter(function(c) { return c.projectId === projectId; });
-      document.getElementById('linkedCosts').textContent =
-        costs.length === 0 ? 'Noch keine Kosten' : costs.length + ' Kosteneintrag' + (costs.length > 1 ? 'e' : '');
+      var elCosts = document.getElementById('linkedCosts');
+      if (costs.length === 0) {
+        elCosts.innerHTML = 'Noch keine Kosten';
+      } else {
+        var costSum = costs.reduce(function(acc, c) { return acc + (parseFloat(c.amount) || 0); }, 0);
+        elCosts.innerHTML = costs.sort(function(a, b) { return (b.date || '').localeCompare(a.date || ''); }).map(function(c) {
+          var status = c.status || 'offen';
+          var badgeClass = status === 'bezahlt' ? 'badge-abgeschlossen' : 'badge-entwurf';
+          var amount = parseFloat(c.amount) || 0;
+          var label = (c.date ? formatDate(c.date) : 'Ohne Datum') +
+            (c.category ? ' — ' + esc(c.category) : '') +
+            ' — ' + amount.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+          return '<a href="costs.html?id=' + c.id + '&projectId=' + projectId + '" style="display:block;padding:6px 0;border-bottom:1px solid var(--color-border);font-size:.85rem;">' +
+            esc(label) + ' <span class="badge ' + badgeClass + '">' + esc(status) + '</span></a>';
+        }).join('') +
+        '<div style="font-weight:600;padding:8px 0;font-size:.9rem;">Summe: ' +
+          costSum.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' }) + '</div>';
+      }
     }
 
     // =============================================
