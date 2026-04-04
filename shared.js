@@ -157,43 +157,50 @@ function _initLoginPage(callback) {
 
 /**
  * Protected page initialization:
- * Uses auth.onAuthStateChanged but gives Firebase time to restore the session.
- * Prevents the race condition where null fires before persistence is loaded.
+ * Uses auth.authStateReady() — a Promise that resolves only after Firebase has
+ * definitively determined the auth state (reads IndexedDB/localStorage first).
+ * Eliminates the race condition without any timeout hacks.
+ * Falls back to onAuthStateChanged for environments where authStateReady is unavailable.
  */
 function _initProtectedPage(callback) {
-  // Flag: has the first auth state fired?
-  var resolved = false;
+  var callbackCalled = false;
 
-  auth.onAuthStateChanged(function(user) {
-    console.log('[Auth] onAuthStateChanged (protected):', user ? user.email : 'null');
-
-    if (user) {
-      resolved = true;
-      if (callback) callback(user);
-      return;
-    }
-
-    if (resolved) {
-      // User was logged in but signed out during session
-      console.log('[Auth] User signed out, redirecting to login');
+  function onResolved(user) {
+    if (callbackCalled) return;
+    callbackCalled = true;
+    if (!user) {
+      console.log('[Auth] No user after state resolved, redirecting to login');
       window.location.href = 'index.html';
       return;
     }
+    console.log('[Auth] Authenticated:', user.email);
+    if (callback) callback(user);
 
-    // First fire was null — might be a race condition.
-    // Wait briefly for Firebase to load persisted session.
-    resolved = true;
-    console.log('[Auth] First auth state is null, waiting 1500ms for persistence...');
-    setTimeout(function() {
-      var currentUser = auth.currentUser;
-      console.log('[Auth] After wait, currentUser:', currentUser ? currentUser.email : 'null');
-      if (!currentUser) {
-        console.log('[Auth] Confirmed: no user. Redirecting to login.');
+    // Watch for sign-out during the session
+    auth.onAuthStateChanged(function(u) {
+      if (!u) {
+        console.log('[Auth] Signed out during session, redirecting to login');
         window.location.href = 'index.html';
       }
-      // If currentUser exists, onAuthStateChanged will fire again with user
-    }, 1500);
-  });
+    });
+  }
+
+  if (typeof auth.authStateReady === 'function') {
+    // Firebase compat ≥ v9.8: waits for persistence layer (IndexedDB) to load
+    console.log('[Auth] Using authStateReady()');
+    auth.authStateReady().then(function() {
+      onResolved(auth.currentUser);
+    }).catch(function(err) {
+      console.warn('[Auth] authStateReady error:', err);
+      onResolved(null);
+    });
+  } else {
+    // Fallback: onAuthStateChanged fires once auth state is known
+    console.log('[Auth] authStateReady not available, using onAuthStateChanged');
+    auth.onAuthStateChanged(function(user) {
+      onResolved(user);
+    });
+  }
 }
 
 // --- Online/Offline Detection ---
@@ -246,19 +253,18 @@ function saveToLocal(collection, id, data) {
   data.savedBy = user ? user.uid : 'anonymous';
   if (data.deleted === undefined) data.deleted = false;
 
-  // Sync full data (with Base64) to Firebase if online
+  // Strip Base64 before writing to Firebase or localStorage (avoids 10MB node limit in Realtime DB)
+  var cleanData = stripBase64(JSON.parse(JSON.stringify(data)));
+
   if (isOnline) {
-    syncItemToFirebase(collection, id, data);
+    syncItemToFirebase(collection, id, cleanData);
   }
 
-  // Strip Base64 data before writing to localStorage (5MB limit)
-  var localData = stripBase64(JSON.parse(JSON.stringify(data)));
-
   var store = loadFromLocal(collection);
-  store[id] = localData;
+  store[id] = cleanData;
   localStorage.setItem('ff_' + collection, JSON.stringify(store));
 
-  return data;
+  return data; // return original (with Base64 intact) for in-memory use by caller
 }
 
 /**
