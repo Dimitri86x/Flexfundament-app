@@ -558,8 +558,9 @@ function _addPendingUpload(entry) {
     localStorage.setItem('ff_pending_uploads', JSON.stringify(queue));
     console.log('[PendingUploads] Queued:', entry.name, '(' + entry.pendingUploadId + ')');
   } catch (e) {
-    // Quota exceeded — file too large to survive offline. Known limitation.
+    // Quota exceeded — file too large to survive offline.
     console.warn('[PendingUploads] Cannot queue (storage quota exceeded?):', entry.name, '-', e.message);
+    showToast((entry.name || 'Datei') + ' ist zu groß für die Offline-Warteschlange — bitte bei Internetzugang erneut hochladen', 'error');
   }
 }
 
