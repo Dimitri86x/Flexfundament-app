@@ -19,6 +19,15 @@ var auth = firebase.auth();
 var db = firebase.database();
 var storage = firebase.storage();
 
+// Connect to local Firebase Emulators when running on localhost
+// (harmless in production — localhost check never matches GitHub Pages)
+if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+  auth.useEmulator('http://localhost:9099');
+  db.useEmulator('localhost', 9000);
+  storage.useEmulator('localhost', 9199);
+  console.log('[Firebase] Using local emulators (Auth:9099, DB:9000, Storage:9199)');
+}
+
 // Explicitly set LOCAL persistence on init
 auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(function(err) {
   console.warn('setPersistence error:', err);
