@@ -2,31 +2,65 @@
    Flexfundament App – Service Worker
    ============================================ */
 
-var CACHE_NAME = 'ff-app-v15';
+var CACHE_NAME = 'ff-app-v16';
+
 var APP_SHELL = [
-  './shared.js',
-  './shared.css',
-  './manifest.json',
+  './',
+  './index.html',
+  './dashboard.html',
   './projects.html',
   './reports.html',
   './reports-logic.js',
   './documents.html',
   './drives.html',
-  './costs.html'
+  './costs.html',
+  './calendar.html',
+  './shared.js',
+  './shared.css',
+  './manifest.json',
+  './icons/icon-192.svg',
+  './icons/icon-512.svg'
 ];
 
-// Install: cache only static assets (NOT HTML pages)
+// External scripts cached with best-effort (no install failure if CDN unreachable)
+var EXTERNAL_SCRIPTS = [
+  'https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js',
+  'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js',
+  'https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js',
+  'https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'
+];
+
+// CDN hosts intercepted by the fetch handler (cache-first)
+var CACHED_CDN_HOSTS = ['www.gstatic.com', 'cdnjs.cloudflare.com'];
+
+// Install: cache App Shell (required) + CDN scripts (best-effort)
 self.addEventListener('install', function(event) {
   event.waitUntil(
     caches.open(CACHE_NAME).then(function(cache) {
-      return cache.addAll(APP_SHELL);
+      // App shell must succeed — if any file is missing the install fails
+      return cache.addAll(APP_SHELL).then(function() {
+        // CDN scripts are best-effort: cache them individually, ignore failures
+        var cdnPromises = EXTERNAL_SCRIPTS.map(function(url) {
+          return fetch(url, { cache: 'no-cache' })
+            .then(function(response) {
+              if (response && response.status === 200) {
+                return cache.put(url, response);
+              }
+            })
+            .catch(function(err) {
+              console.warn('[SW] CDN pre-cache failed (offline?):', url, err.message);
+            });
+        });
+        return Promise.all(cdnPromises);
+      });
     }).then(function() {
       return self.skipWaiting();
     })
   );
 });
 
-// Activate: clean old caches
+// Activate: delete old caches
 self.addEventListener('activate', function(event) {
   event.waitUntil(
     caches.keys().then(function(keys) {
@@ -47,17 +81,47 @@ self.addEventListener('activate', function(event) {
 self.addEventListener('fetch', function(event) {
   var url = new URL(event.request.url);
 
-  // NEVER intercept external requests (Google, Firebase, CDN, etc.)
-  if (url.origin !== self.location.origin) {
-    return; // Let the browser handle it natively
+  // CDN scripts (Firebase SDK, jsPDF): cache-first, fall back to network
+  if (CACHED_CDN_HOSTS.indexOf(url.hostname) !== -1) {
+    event.respondWith(
+      caches.match(event.request).then(function(cached) {
+        if (cached) return cached;
+        return fetch(event.request).then(function(response) {
+          if (response && response.status === 200) {
+            var clone = response.clone();
+            caches.open(CACHE_NAME).then(function(cache) {
+              cache.put(event.request, clone);
+            });
+          }
+          return response;
+        });
+      })
+    );
+    return;
   }
 
-  // HTML pages: ALWAYS network-first (prevents auth redirect caching issues)
+  // Ignore all other external origins (Firebase API calls, etc.)
+  if (url.origin !== self.location.origin) {
+    return;
+  }
+
+  var acceptHeader = event.request.headers.get('accept') || '';
+
+  // HTML pages: network-first (always fresh when online, cached fallback when offline)
   if (event.request.mode === 'navigate' ||
-      event.request.headers.get('accept').indexOf('text/html') !== -1) {
+      acceptHeader.indexOf('text/html') !== -1) {
     event.respondWith(
-      fetch(event.request).catch(function() {
-        // Offline: try to serve cached version
+      fetch(event.request).then(function(response) {
+        // Update the cache with the fresh response
+        if (response && response.status === 200) {
+          var clone = response.clone();
+          caches.open(CACHE_NAME).then(function(cache) {
+            cache.put(event.request, clone);
+          });
+        }
+        return response;
+      }).catch(function() {
+        // Offline: serve cached version
         return caches.match(event.request).then(function(cached) {
           return cached || caches.match('./index.html');
         });
@@ -66,7 +130,7 @@ self.addEventListener('fetch', function(event) {
     return;
   }
 
-  // Static assets (JS, CSS): cache-first with background update
+  // Static assets (JS, CSS, images): cache-first with background update
   event.respondWith(
     caches.match(event.request).then(function(cached) {
       var fetchPromise = fetch(event.request).then(function(response) {

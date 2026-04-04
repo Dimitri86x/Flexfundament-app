@@ -180,11 +180,15 @@ function _initProtectedPage(callback) {
     // Runs after auth so Firebase Storage rules can be satisfied.
     if (isOnline) processPendingUploads();
 
-    // Watch for sign-out during the session
+    // Watch for sign-out during the session — but NOT when offline,
+    // because Firebase Auth may emit null while the network is unavailable
+    // even though the user's LOCAL_PERSISTENCE token is still valid.
     auth.onAuthStateChanged(function(u) {
-      if (!u) {
+      if (!u && isOnline) {
         console.log('[Auth] Signed out during session, redirecting to login');
         window.location.href = 'index.html';
+      } else if (!u) {
+        console.log('[Auth] Auth state null while offline — keeping session');
       }
     });
   }
