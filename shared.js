@@ -176,6 +176,10 @@ function _initProtectedPage(callback) {
     console.log('[Auth] Authenticated:', user.email);
     if (callback) callback(user);
 
+    // Process any files queued while offline in a previous session.
+    // Runs after auth so Firebase Storage rules can be satisfied.
+    if (isOnline) processPendingUploads();
+
     // Watch for sign-out during the session
     auth.onAuthStateChanged(function(u) {
       if (!u) {
@@ -214,6 +218,7 @@ function initOnlineStatus() {
     updateOnlineUI();
     showToast('Wieder online', 'success');
     syncAllCollections();
+    processPendingUploads();
   });
 
   window.addEventListener('offline', function() {
@@ -453,14 +458,28 @@ function uploadFilesToStorage(collection, recordId, filesArray, subPath) {
       return Promise.resolve(clone);
     }
 
-    // Offline — keep dataUrl so it is not lost
-    if (!isOnline) {
-      return Promise.resolve(clone);
-    }
-
-    // Sanitize filename (remove path separators)
     var safeName = (clone.name || 'file').replace(/[/\\]/g, '_');
     var storagePath = basePath + '/' + index + '_' + safeName;
+
+    // Offline — queue for later upload so stripBase64 doesn't silently discard the file
+    if (!isOnline) {
+      var pendingId = _makePendingId(collection, recordId, subPath, index);
+      _addPendingUpload({
+        pendingUploadId: pendingId,
+        collection: collection,
+        recordId: recordId,
+        subPath: subPath || '',
+        itemIndex: index,
+        storagePath: storagePath,
+        name: safeName,
+        type: clone.type || '',
+        dataUrl: clone.dataUrl,
+        queuedAt: Date.now()
+      });
+      clone.pendingUploadId = pendingId;
+      clone.dataUrl = '';
+      return Promise.resolve(clone);
+    }
 
     try {
       var parts = clone.dataUrl.split(',');
@@ -478,7 +497,22 @@ function uploadFilesToStorage(collection, recordId, filesArray, subPath) {
         return clone;
       }).catch(function(err) {
         console.error('[Storage] Upload failed:', storagePath, err.code || err.message);
-        // Keep dataUrl so caller can retry on next save
+        // Queue for retry — don't silently discard file content
+        var pendingId = _makePendingId(collection, recordId, subPath, index);
+        _addPendingUpload({
+          pendingUploadId: pendingId,
+          collection: collection,
+          recordId: recordId,
+          subPath: subPath || '',
+          itemIndex: index,
+          storagePath: storagePath,
+          name: safeName,
+          type: clone.type || '',
+          dataUrl: clone.dataUrl,
+          queuedAt: Date.now()
+        });
+        clone.pendingUploadId = pendingId;
+        clone.dataUrl = '';
         return clone;
       });
     } catch (e) {
@@ -488,6 +522,131 @@ function uploadFilesToStorage(collection, recordId, filesArray, subPath) {
   });
 
   return Promise.all(promises);
+}
+
+// --- Pending Upload Queue ---
+
+function _makePendingId(collection, recordId, subPath, index) {
+  return [collection, recordId, subPath || '', index, Date.now()].join('_');
+}
+
+/**
+ * Persist a pending upload entry to localStorage.
+ * Stores the full dataUrl so the file survives page reload.
+ * If localStorage is full (quota exceeded), logs a warning — the entry
+ * won't be queued but the in-memory flow continues uninterrupted.
+ */
+function _addPendingUpload(entry) {
+  try {
+    var queue = _loadPendingUploads();
+    // Deduplicate: same pendingUploadId replaces existing entry
+    queue = queue.filter(function(q) { return q.pendingUploadId !== entry.pendingUploadId; });
+    queue.push(entry);
+    localStorage.setItem('ff_pending_uploads', JSON.stringify(queue));
+    console.log('[PendingUploads] Queued:', entry.name, '(' + entry.pendingUploadId + ')');
+  } catch (e) {
+    // Quota exceeded — file too large to survive offline. Known limitation.
+    console.warn('[PendingUploads] Cannot queue (storage quota exceeded?):', entry.name, '-', e.message);
+  }
+}
+
+function _loadPendingUploads() {
+  try {
+    return JSON.parse(localStorage.getItem('ff_pending_uploads') || '[]');
+  } catch (e) {
+    return [];
+  }
+}
+
+function _removePendingUpload(pendingUploadId) {
+  try {
+    var queue = _loadPendingUploads();
+    localStorage.setItem('ff_pending_uploads',
+      JSON.stringify(queue.filter(function(q) { return q.pendingUploadId !== pendingUploadId; })));
+  } catch (e) { /* ignore */ }
+}
+
+/**
+ * After a pending upload succeeds, update the saved record in localStorage and Firebase:
+ * find the item with matching pendingUploadId, set downloadUrl, remove the marker.
+ */
+function _applyPendingUploadResult(entry, downloadUrl) {
+  var store = loadFromLocal(entry.collection);
+  var record = store[entry.recordId];
+  if (!record) {
+    console.log('[PendingUploads] Record gone, nothing to update:', entry.collection, entry.recordId);
+    return;
+  }
+
+  var updated = false;
+  ['accessFiles', 'photos', 'files', 'obstaclePhotos'].forEach(function(field) {
+    if (!Array.isArray(record[field])) return;
+    record[field] = record[field].map(function(item) {
+      if (item && item.pendingUploadId === entry.pendingUploadId) {
+        updated = true;
+        var copy = JSON.parse(JSON.stringify(item));
+        copy.downloadUrl = downloadUrl;
+        delete copy.pendingUploadId;
+        return copy;
+      }
+      return item;
+    });
+  });
+
+  if (updated) {
+    store[entry.recordId] = record;
+    try {
+      localStorage.setItem('ff_' + entry.collection, JSON.stringify(store));
+    } catch (e) {
+      console.warn('[PendingUploads] Could not write updated record to localStorage:', e.message);
+    }
+    syncItemToFirebase(entry.collection, entry.recordId, record);
+    console.log('[PendingUploads] Record updated with downloadUrl:', entry.collection, entry.recordId);
+  } else {
+    console.log('[PendingUploads] Item not found in record (may have been deleted):', entry.pendingUploadId);
+  }
+}
+
+/**
+ * Process all queued pending uploads.
+ * Called on app startup (when authenticated + online) and on the 'online' event.
+ * Each upload is independent — failures stay in the queue for the next call.
+ */
+function processPendingUploads() {
+  if (!isOnline) return;
+  var queue = _loadPendingUploads();
+  if (queue.length === 0) return;
+
+  console.log('[PendingUploads] Processing', queue.length, 'pending upload(s)...');
+
+  queue.forEach(function(entry) {
+    if (!entry.dataUrl || !entry.pendingUploadId || !entry.storagePath) return;
+
+    try {
+      var parts = entry.dataUrl.split(',');
+      var mime = parts[0].match(/:(.*?);/)[1];
+      var bstr = atob(parts[1]);
+      var arr = new Uint8Array(bstr.length);
+      for (var i = 0; i < bstr.length; i++) arr[i] = bstr.charCodeAt(i);
+      var blob = new Blob([arr], { type: mime });
+
+      storage.ref(entry.storagePath).put(blob)
+        .then(function(snapshot) { return snapshot.ref.getDownloadURL(); })
+        .then(function(url) {
+          _applyPendingUploadResult(entry, url);
+          _removePendingUpload(entry.pendingUploadId);
+          showToast(entry.name + ' hochgeladen', 'success');
+          console.log('[PendingUploads] Done:', entry.pendingUploadId);
+        })
+        .catch(function(err) {
+          // Leave in queue — will retry on next online event or app start
+          console.error('[PendingUploads] Upload failed, will retry:', entry.pendingUploadId,
+            err.code || err.message);
+        });
+    } catch (e) {
+      console.error('[PendingUploads] Prep error:', entry.pendingUploadId, e.message);
+    }
+  });
 }
 
 // --- Soft Delete ---
