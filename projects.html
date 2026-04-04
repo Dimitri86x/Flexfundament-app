@@ -578,11 +578,18 @@
       if (accessFiles.length === 0) { grid.innerHTML = ''; return; }
 
       grid.innerHTML = accessFiles.map(function(f, i) {
+        var isPdf = f.type === 'pdf' || (f.name || '').toLowerCase().endsWith('.pdf');
+        var src = f.downloadUrl || f.dataUrl;
         var inner;
-        if (f.type === 'pdf') {
-          inner = '<div class="photo-thumb-pdf">&#128196;<br>' + esc(f.name) + '</div>';
+        if (isPdf) {
+          var label = '<div class="photo-thumb-pdf">&#128196;<br>' + esc(f.name) + '</div>';
+          // Wrap in link if Storage URL available
+          inner = src ? '<a href="' + src + '" target="_blank" style="display:block;">' + label + '</a>' : label;
         } else {
-          inner = '<img src="' + f.dataUrl + '" alt="Foto">';
+          // Image: prefer Storage URL (after reload), fall back to dataUrl (fresh upload)
+          inner = src
+            ? '<img src="' + src + '" alt="Foto">'
+            : '<div class="photo-thumb-pdf">&#128247;<br>' + esc(f.name || 'Foto') + '</div>';
         }
         return '<div class="photo-thumb">' + inner +
           '<button type="button" class="photo-remove" data-index="' + i + '">&times;</button>' +
@@ -783,18 +790,32 @@
       });
 
       var id = currentId || generateId();
-      saveToLocal('projects', id, data);
 
-      if (hasWarning) {
-        showToast('Gespeichert (fehlende Pflichtfelder)', 'warning');
-      } else {
-        showToast('Projekt gespeichert', 'success');
-      }
+      // Disable submit during upload
+      var submitBtn = document.querySelector('#projectForm [type="submit"]');
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Wird gespeichert...';
 
-      currentId = id;
-      history.replaceState(null, '', 'projects.html?id=' + id);
-      document.getElementById('formTitle').textContent = 'Projekt bearbeiten';
-      document.getElementById('btnDelete').style.display = '';
+      uploadFilesToStorage('projects', id, data.accessFiles).then(function(uploadedFiles) {
+        data.accessFiles = uploadedFiles;
+        saveToLocal('projects', id, data);
+
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Speichern';
+
+        showToast(hasWarning ? 'Gespeichert (fehlende Pflichtfelder)' : 'Projekt gespeichert',
+          hasWarning ? 'warning' : 'success');
+
+        currentId = id;
+        history.replaceState(null, '', 'projects.html?id=' + id);
+        document.getElementById('formTitle').textContent = 'Projekt bearbeiten';
+        document.getElementById('btnDelete').style.display = '';
+      }).catch(function(err) {
+        console.error('[Projects] Save error:', err);
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Speichern';
+        showToast('Fehler beim Speichern: ' + err.message, 'error');
+      });
     });
 
     // =============================================

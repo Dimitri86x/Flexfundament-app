@@ -417,6 +417,79 @@ function syncWithFirebase(collection) {
   });
 }
 
+// --- Firebase Storage Upload ---
+
+/**
+ * Uploads files with a dataUrl to Firebase Storage and returns a new array
+ * with downloadUrl set and dataUrl cleared for each uploaded item.
+ *
+ * The ORIGINAL filesArray is never modified — in-memory state (e.g. for PDF export)
+ * stays intact until the page is reloaded.
+ *
+ * - Items that already have a downloadUrl are passed through unchanged (no double upload).
+ * - Items without a dataUrl are passed through unchanged.
+ * - If offline: items are passed through with dataUrl intact (no silent data loss).
+ * - If a single upload fails: that item keeps its dataUrl intact (logged, not swallowed).
+ *
+ * @param {string} collection  e.g. 'projects', 'reports', 'costs', 'drives'
+ * @param {string} recordId    Firebase record ID — used in storage path
+ * @param {Array}  filesArray  Array of objects with { dataUrl, name, type, ... }
+ * @param {string} [subPath]   Optional sub-folder, e.g. 'photos', 'obstacle'
+ * @returns {Promise<Array>}   Resolved array safe to pass to saveToLocal()
+ */
+function uploadFilesToStorage(collection, recordId, filesArray, subPath) {
+  if (!filesArray || filesArray.length === 0) {
+    return Promise.resolve([]);
+  }
+
+  var basePath = 'files/' + collection + '/' + recordId + (subPath ? '/' + subPath : '');
+
+  var promises = filesArray.map(function(item, index) {
+    // Deep-clone item so we never mutate the original array entry
+    var clone = JSON.parse(JSON.stringify(item));
+
+    // Already uploaded or no content to upload — pass through
+    if (!clone.dataUrl || clone.downloadUrl) {
+      return Promise.resolve(clone);
+    }
+
+    // Offline — keep dataUrl so it is not lost
+    if (!isOnline) {
+      return Promise.resolve(clone);
+    }
+
+    // Sanitize filename (remove path separators)
+    var safeName = (clone.name || 'file').replace(/[/\\]/g, '_');
+    var storagePath = basePath + '/' + index + '_' + safeName;
+
+    try {
+      var parts = clone.dataUrl.split(',');
+      var mime = parts[0].match(/:(.*?);/)[1];
+      var bstr = atob(parts[1]);
+      var arr = new Uint8Array(bstr.length);
+      for (var i = 0; i < bstr.length; i++) arr[i] = bstr.charCodeAt(i);
+      var blob = new Blob([arr], { type: mime });
+
+      return storage.ref(storagePath).put(blob).then(function(snapshot) {
+        return snapshot.ref.getDownloadURL();
+      }).then(function(url) {
+        clone.downloadUrl = url;
+        clone.dataUrl = '';
+        return clone;
+      }).catch(function(err) {
+        console.error('[Storage] Upload failed:', storagePath, err.code || err.message);
+        // Keep dataUrl so caller can retry on next save
+        return clone;
+      });
+    } catch (e) {
+      console.error('[Storage] Upload prep error:', storagePath, e.message);
+      return Promise.resolve(clone);
+    }
+  });
+
+  return Promise.all(promises);
+}
+
 // --- Soft Delete ---
 
 function softDelete(collection, id, label) {

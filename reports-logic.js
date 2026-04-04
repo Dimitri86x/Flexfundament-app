@@ -411,9 +411,17 @@ function renderObstacleGrid() {
   var grid = document.getElementById('obstaclePhotoGrid');
   if (obstaclePhotos.length === 0) { grid.innerHTML = ''; return; }
   grid.innerHTML = obstaclePhotos.map(function(f, i) {
-    var inner = f.type === 'pdf'
-      ? '<div class="photo-thumb-pdf">&#128196;<br>' + esc(f.name) + '</div>'
-      : '<img src="' + f.dataUrl + '" alt="Foto">';
+    var isPdf = f.type === 'pdf' || (f.name || '').toLowerCase().endsWith('.pdf');
+    var src = f.downloadUrl || f.dataUrl;
+    var inner;
+    if (isPdf) {
+      var label = '<div class="photo-thumb-pdf">&#128196;<br>' + esc(f.name) + '</div>';
+      inner = src ? '<a href="' + src + '" target="_blank" style="display:block;">' + label + '</a>' : label;
+    } else {
+      inner = src
+        ? '<img src="' + src + '" alt="Foto">'
+        : '<div class="photo-thumb-pdf">&#128247;<br>' + esc(f.name || 'Foto') + '</div>';
+    }
     return '<div class="photo-thumb">' + inner +
       '<button type="button" class="photo-remove" data-i="' + i + '">&times;</button></div>';
   }).join('');
@@ -430,9 +438,19 @@ function renderPhotosList() {
   if (reportPhotos.length === 0) { container.innerHTML = ''; return; }
 
   container.innerHTML = reportPhotos.map(function(p, i) {
-    var preview = p.type === 'pdf'
-      ? '<div class="photo-thumb-pdf">&#128196; ' + esc(p.name) + '</div>'
-      : '<img src="' + p.dataUrl + '" alt="Foto" style="max-width:100%;max-height:200px;border-radius:4px;">';
+    var isPdf = p.type === 'pdf' || (p.name || '').toLowerCase().endsWith('.pdf');
+    var src = p.downloadUrl || p.dataUrl;
+    var preview;
+    if (isPdf) {
+      var label = '&#128196; ' + esc(p.name);
+      preview = src
+        ? '<a href="' + src + '" target="_blank" class="photo-thumb-pdf" style="display:block;">' + label + '</a>'
+        : '<div class="photo-thumb-pdf">' + label + '</div>';
+    } else {
+      preview = src
+        ? '<img src="' + src + '" alt="Foto" style="max-width:100%;max-height:200px;border-radius:4px;">'
+        : '<div class="photo-thumb-pdf">&#128247; ' + esc(p.name || 'Foto') + '</div>';
+    }
     return '<div class="photo-item">' + preview +
       '<input type="text" class="form-input mt-sm" placeholder="Beschreibung..." value="' + esc(p.description || '') + '" data-photo-i="' + i + '">' +
       '<button type="button" class="btn btn-danger mt-sm" data-rm-photo="' + i + '" style="font-size:.8rem;padding:4px 8px;">Entfernen</button>' +
@@ -521,37 +539,59 @@ document.getElementById('reportForm').addEventListener('submit', function(e) {
 
     if (data.obstacle) warn('wObstacleDesc', !data.obstacleDesc);
 
-    // Save
+    // Disable submit during upload
+    var submitBtn = document.querySelector('#reportForm [type="submit"]');
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Wird gespeichert...'; }
+
     var id = currentId || generateId();
-    console.log('[Reports] Saving id=' + id);
+    console.log('[Reports] Uploading files and saving id=' + id);
 
-    try {
-      saveToLocal('reports', id, data);
-    } catch (storageErr) {
-      console.error('[Reports] localStorage error:', storageErr);
-      showToast('Speicherfehler: ' + storageErr.message, 'error');
-      return;
-    }
+    // Upload obstaclePhotos and reportPhotos to Storage in parallel.
+    // uploadFilesToStorage returns a NEW array — original in-memory arrays keep dataUrl
+    // intact for use in PDF export within the same session.
+    Promise.all([
+      uploadFilesToStorage('reports', id, data.obstaclePhotos, 'obstacle'),
+      uploadFilesToStorage('reports', id, data.photos, 'photos')
+    ]).then(function(results) {
+      data.obstaclePhotos = results[0];
+      data.photos = results[1];
 
-    console.log('[Reports] Saved successfully');
-    showToast(hasWarning ? 'Gespeichert (fehlende Pflichtfelder)' : 'Einsatzbericht gespeichert', hasWarning ? 'warning' : 'success');
-
-    currentId = id;
-    history.replaceState(null, '', 'reports.html?id=' + id);
-    document.getElementById('formTitle').textContent = 'Einsatzbericht bearbeiten';
-    document.getElementById('btnDelete').style.display = '';
-    document.getElementById('btnPdf').style.display = '';
-
-    // Auto-transfer GPS to project if project has no coordinates
-    if (gpsLat && gpsLng && data.projectId) {
-      var proj = getItemById('projects', data.projectId);
-      if (proj && !proj.lat && !proj.lng) {
-        proj.lat = String(gpsLat);
-        proj.lng = String(gpsLng);
-        saveToLocal('projects', data.projectId, proj);
-        showToast('Koordinaten wurden ins Projekt uebernommen', 'success');
+      try {
+        saveToLocal('reports', id, data);
+      } catch (storageErr) {
+        console.error('[Reports] localStorage error:', storageErr);
+        showToast('Speicherfehler: ' + storageErr.message, 'error');
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Speichern'; }
+        return;
       }
-    }
+
+      console.log('[Reports] Saved successfully');
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Speichern'; }
+      showToast(hasWarning ? 'Gespeichert (fehlende Pflichtfelder)' : 'Einsatzbericht gespeichert',
+        hasWarning ? 'warning' : 'success');
+
+      currentId = id;
+      history.replaceState(null, '', 'reports.html?id=' + id);
+      document.getElementById('formTitle').textContent = 'Einsatzbericht bearbeiten';
+      document.getElementById('btnDelete').style.display = '';
+      document.getElementById('btnPdf').style.display = '';
+
+      // Auto-transfer GPS to project if project has no coordinates
+      if (gpsLat && gpsLng && data.projectId) {
+        var proj = getItemById('projects', data.projectId);
+        if (proj && !proj.lat && !proj.lng) {
+          proj.lat = String(gpsLat);
+          proj.lng = String(gpsLng);
+          saveToLocal('projects', data.projectId, proj);
+          showToast('Koordinaten wurden ins Projekt uebernommen', 'success');
+        }
+      }
+    }).catch(function(err) {
+      console.error('[Reports] Save error:', err);
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Speichern'; }
+      showToast('Fehler beim Speichern: ' + err.message, 'error');
+    });
+
   } catch (err) {
     console.error('[Reports] Unexpected save error:', err);
     showToast('Fehler beim Speichern: ' + err.message, 'error');
@@ -722,7 +762,16 @@ document.getElementById('btnPdf').addEventListener('click', function() {
     }
 
     // Photos
-    var imagePhotos = (r.photos || []).filter(function(p) { return p.type === 'image' && p.dataUrl; });
+    // Prefer in-memory reportPhotos (dataUrl still present in same session after upload).
+    // After reload, reportPhotos[i].dataUrl === '' — fall back to stored data which also
+    // has no dataUrl. Photos uploaded to Storage are not embedded in offline PDFs (known
+    // remaining limitation — would require async fetch from Storage URL).
+    var photosSource = (reportPhotos.length > 0 && reportPhotos.some(function(p) { return !!p.dataUrl; }))
+      ? reportPhotos
+      : (r.photos || []);
+    var imagePhotos = photosSource.filter(function(p) { return p.type === 'image' && p.dataUrl; });
+    var storageOnlyPhotos = (r.photos || []).filter(function(p) { return !p.dataUrl && p.downloadUrl; });
+
     if (imagePhotos.length > 0) {
       heading('Fotos');
       imagePhotos.forEach(function(p, idx) {
@@ -743,6 +792,20 @@ document.getElementById('btnPdf').addEventListener('click', function() {
         }
       });
     }
+
+    // Note photos that are only in Firebase Storage (not embeddable without async fetch)
+    if (storageOnlyPhotos.length > 0 && imagePhotos.length === 0) {
+      heading('Fotos');
+    }
+    storageOnlyPhotos.forEach(function(p) {
+      checkPage(lh);
+      doc.setFontSize(9);
+      doc.setTextColor(100, 100, 100);
+      doc.text('Foto in Firebase Storage: ' + (p.description || p.name || p.downloadUrl), lm, y);
+      doc.setTextColor(0, 0, 0);
+      doc.setFontSize(10);
+      y += lh;
+    });
 
     // Save PDF
     var filename = 'Einsatzbericht_' + (r.date || 'ohne-datum') + '.pdf';

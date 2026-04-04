@@ -448,10 +448,17 @@
       var photos = positions[posIdx].photos || [];
       if (photos.length === 0) { grid.innerHTML = ''; return; }
       grid.innerHTML = photos.map(function(p, pIdx) {
-        var isPdf = (p.type || '').indexOf('pdf') !== -1;
-        var thumb = isPdf
-          ? '<div style="width:100%;aspect-ratio:1;display:flex;align-items:center;justify-content:center;background:var(--color-bg);border-radius:var(--radius-sm);font-size:1.5rem;">&#128196;</div>'
-          : '<img src="' + p.dataUrl + '" alt="' + esc(p.name) + '">';
+        var isPdf = (p.type || '').indexOf('pdf') !== -1 || (p.name || '').toLowerCase().endsWith('.pdf');
+        var src = p.downloadUrl || p.dataUrl;
+        var thumb;
+        if (isPdf) {
+          var icon = '<div style="width:100%;aspect-ratio:1;display:flex;align-items:center;justify-content:center;background:var(--color-bg);border-radius:var(--radius-sm);font-size:1.5rem;">&#128196;</div>';
+          thumb = src ? '<a href="' + src + '" target="_blank">' + icon + '</a>' : icon;
+        } else {
+          thumb = src
+            ? '<img src="' + src + '" alt="' + esc(p.name) + '">'
+            : '<div style="width:100%;aspect-ratio:1;display:flex;align-items:center;justify-content:center;background:var(--color-bg);border-radius:var(--radius-sm);font-size:1.5rem;">&#128247;</div>';
+        }
         return '<div style="position:relative;">' + thumb +
           '<button type="button" onclick="removePosPhoto(' + posIdx + ',' + pIdx + ')" style="position:absolute;top:2px;right:2px;width:20px;height:20px;background:rgba(0,0,0,.6);color:#fff;border:none;border-radius:50%;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;">&times;</button>' +
         '</div>';
@@ -530,6 +537,10 @@
           showToast('Datum darf nicht in der Zukunft liegen', 'warning');
         }
 
+        var submitBtn = document.querySelector('#costForm [type="submit"]');
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Wird gespeichert...';
+
         if (currentId) {
           // Editing existing single record
           var pos = positions[0] || {};
@@ -548,58 +559,90 @@
           if (!data.category) hasWarning = true;
           if (!data.amount || data.amount <= 0) hasWarning = true;
 
-          saveToLocal('costs', currentId, data);
-          if (isOnline) syncItemToFirebase('costs', currentId, data);
-
-          showToast(hasWarning ? 'Gespeichert (fehlende Pflichtfelder)' : 'Kosten gespeichert', hasWarning ? 'warning' : 'success');
-          document.getElementById('formTitle').textContent = 'Kosten bearbeiten';
-          document.getElementById('btnDelete').style.display = '';
-        } else {
-          // New: save each position as own record
-          var savedIds = [];
-          positions.forEach(function(pos) {
-            var data = {
-              projectId: projectId,
-              projectName: projectName,
-              date: date,
-              employee: employee,
-              category: pos.category || '',
-              amount: pos.amount || 0,
-              notes: pos.notes || '',
-              status: status,
-              photos: (pos.photos || []).slice()
-            };
-
-            if (!data.category || !data.amount || data.amount <= 0) hasWarning = true;
-
-            var id = generateId();
-            saveToLocal('costs', id, data);
-            if (isOnline) syncItemToFirebase('costs', id, data);
-            savedIds.push(id);
-          });
-
-          var count = savedIds.length;
-          showToast(count + ' Kostenposition' + (count > 1 ? 'en' : '') + ' gespeichert' +
-            (hasWarning ? ' (fehlende Pflichtfelder)' : ''), hasWarning ? 'warning' : 'success');
-
-          // Navigate back to project or list
-          var urlProjId = getUrlParam('projectId');
-          if (urlProjId) {
-            window.location.href = 'projects.html?id=' + urlProjId;
-            return;
-          } else if (savedIds.length === 1) {
-            currentId = savedIds[0];
-            history.replaceState(null, '', 'costs.html?id=' + currentId);
+          var _hasWarning = hasWarning;
+          uploadFilesToStorage('costs', currentId, data.photos).then(function(uploaded) {
+            data.photos = uploaded;
+            saveToLocal('costs', currentId, data);
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Speichern';
+            showToast(_hasWarning ? 'Gespeichert (fehlende Pflichtfelder)' : 'Kosten gespeichert',
+              _hasWarning ? 'warning' : 'success');
             document.getElementById('formTitle').textContent = 'Kosten bearbeiten';
             document.getElementById('btnDelete').style.display = '';
-            document.getElementById('btnAddPosition').style.display = 'none';
-          } else {
-            showList();
-            return;
-          }
+          }).catch(function(err) {
+            console.error('[Costs] Save error:', err);
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Speichern';
+            showToast('Fehler beim Speichern: ' + err.message, 'error');
+          });
+
+        } else {
+          // New: assign IDs upfront, upload all positions in parallel, then save
+          var records = positions.map(function(pos) {
+            return {
+              id: generateId(),
+              data: {
+                projectId: projectId,
+                projectName: projectName,
+                date: date,
+                employee: employee,
+                category: pos.category || '',
+                amount: pos.amount || 0,
+                notes: pos.notes || '',
+                status: status,
+                photos: (pos.photos || []).slice()
+              }
+            };
+          });
+
+          records.forEach(function(rec) {
+            if (!rec.data.category || !rec.data.amount || rec.data.amount <= 0) hasWarning = true;
+          });
+
+          var _hasWarning2 = hasWarning;
+          var uploadPromises = records.map(function(rec) {
+            return uploadFilesToStorage('costs', rec.id, rec.data.photos);
+          });
+
+          Promise.all(uploadPromises).then(function(uploadedArrays) {
+            var savedIds = [];
+            records.forEach(function(rec, i) {
+              rec.data.photos = uploadedArrays[i];
+              saveToLocal('costs', rec.id, rec.data);
+              savedIds.push(rec.id);
+            });
+
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Speichern';
+
+            var count = savedIds.length;
+            showToast(count + ' Kostenposition' + (count > 1 ? 'en' : '') + ' gespeichert' +
+              (_hasWarning2 ? ' (fehlende Pflichtfelder)' : ''), _hasWarning2 ? 'warning' : 'success');
+
+            // Navigate back to project or list
+            var urlProjId = getUrlParam('projectId');
+            if (urlProjId) {
+              window.location.href = 'projects.html?id=' + urlProjId;
+            } else if (savedIds.length === 1) {
+              currentId = savedIds[0];
+              history.replaceState(null, '', 'costs.html?id=' + currentId);
+              document.getElementById('formTitle').textContent = 'Kosten bearbeiten';
+              document.getElementById('btnDelete').style.display = '';
+              document.getElementById('btnAddPosition').style.display = 'none';
+            } else {
+              showList();
+            }
+          }).catch(function(err) {
+            console.error('[Costs] Save error:', err);
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Speichern';
+            showToast('Fehler beim Speichern: ' + err.message, 'error');
+          });
         }
       } catch (err) {
         console.error('[Costs] Save error:', err);
+        var sb = document.querySelector('#costForm [type="submit"]');
+        if (sb) { sb.disabled = false; sb.textContent = 'Speichern'; }
         showToast('Fehler: ' + err.message, 'error');
       }
     });

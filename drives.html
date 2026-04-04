@@ -423,8 +423,25 @@
       var grid = document.getElementById('photoGrid');
       if (photos.length === 0) { grid.innerHTML = ''; return; }
       grid.innerHTML = photos.map(function(p, i) {
-        return '<div style="position:relative;">' +
-          '<img src="' + p.dataUrl + '" alt="' + esc(p.name) + '">' +
+        var isImage = p.type && p.type.startsWith('image/');
+        var src = p.downloadUrl || p.dataUrl;
+        var content;
+        if (isImage && src) {
+          content = '<img src="' + src + '" alt="' + esc(p.name) + '">';
+        } else if (src) {
+          // PDF or other non-image with a URL — show as clickable icon
+          content = '<a href="' + src + '" target="_blank" style="display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100%;background:var(--color-bg);border-radius:var(--radius-sm);padding:4px;text-align:center;color:var(--color-text-secondary);font-size:.65rem;text-decoration:none;">' +
+            '<span style="font-size:1.5rem;">&#128196;</span>' +
+            '<span style="word-break:break-all;margin-top:2px;">' + esc(p.name || 'Datei') + '</span>' +
+          '</a>';
+        } else {
+          // No URL available (stripped, not yet uploaded)
+          content = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100%;background:var(--color-bg);border-radius:var(--radius-sm);padding:4px;text-align:center;color:var(--color-text-secondary);font-size:.65rem;">' +
+            '<span style="font-size:1.5rem;">&#128196;</span>' +
+            '<span style="word-break:break-all;margin-top:2px;">' + esc(p.name || 'Datei') + '</span>' +
+          '</div>';
+        }
+        return '<div style="position:relative;aspect-ratio:1;overflow:hidden;border-radius:var(--radius-sm);border:1px solid var(--color-border);">' + content +
           '<button type="button" onclick="removePhoto(' + i + ')" style="position:absolute;top:2px;right:2px;width:24px;height:24px;background:rgba(0,0,0,.6);color:#fff;border:none;border-radius:50%;font-size:14px;cursor:pointer;">&times;</button>' +
         '</div>';
       }).join('');
@@ -493,17 +510,34 @@
           showToast('Datum darf nicht in der Zukunft liegen', 'warning');
         }
 
-        // Save
+        var submitBtn = document.querySelector('#driveForm [type="submit"]');
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Wird gespeichert...';
+
         var id = currentId || generateId();
-        saveToLocal('drives', id, data);
-        showToast(hasWarning ? 'Gespeichert (fehlende Pflichtfelder)' : 'Fahrt gespeichert', hasWarning ? 'warning' : 'success');
+        var _hasWarning = hasWarning;
+        var _projId = getUrlParam('projectId');
 
-        currentId = id;
-        history.replaceState(null, '', 'drives.html?id=' + id + (getUrlParam('projectId') ? '&projectId=' + getUrlParam('projectId') : ''));
-        document.getElementById('formTitle').textContent = 'Fahrt bearbeiten';
-        document.getElementById('btnDelete').style.display = '';
+        uploadFilesToStorage('drives', id, data.photos).then(function(uploadedPhotos) {
+          data.photos = uploadedPhotos;
+          saveToLocal('drives', id, data);
 
-        if (isOnline) syncItemToFirebase('drives', id, data);
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Speichern';
+
+          showToast(_hasWarning ? 'Gespeichert (fehlende Pflichtfelder)' : 'Fahrt gespeichert',
+            _hasWarning ? 'warning' : 'success');
+
+          currentId = id;
+          history.replaceState(null, '', 'drives.html?id=' + id + (_projId ? '&projectId=' + _projId : ''));
+          document.getElementById('formTitle').textContent = 'Fahrt bearbeiten';
+          document.getElementById('btnDelete').style.display = '';
+        }).catch(function(err) {
+          console.error('[Drives] Save error:', err);
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Speichern';
+          showToast('Fehler beim Speichern: ' + err.message, 'error');
+        });
       } catch (err) {
         console.error('[Drives] Save error:', err);
         showToast('Fehler: ' + err.message, 'error');
