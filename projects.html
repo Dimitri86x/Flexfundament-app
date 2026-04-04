@@ -539,6 +539,15 @@
 
       files.forEach(function(file) {
         var isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+        var maxSize = isPdf ? 20 * 1024 * 1024 : 10 * 1024 * 1024;
+        var maxLabel = isPdf ? '20' : '10';
+
+        if (file.size > maxSize) {
+          var sizeMB = (file.size / (1024 * 1024)).toFixed(1);
+          showToast(file.name + ' zu gross (' + sizeMB + ' MB). Maximum ist ' + maxLabel + ' MB.', 'error');
+          if (--pending === 0) renderFileGrid();
+          return;
+        }
 
         if (isPdf) {
           // Store PDF as dataUrl
