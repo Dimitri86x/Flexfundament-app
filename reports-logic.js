@@ -536,7 +536,6 @@ document.getElementById('reportForm').addEventListener('submit', function(e) {
     warn('wWorkers', workers.length === 0);
     warn('wTimeStart', !data.timeStart);
     warn('wTimeEnd', !data.timeEnd);
-    warn('wNotes', !data.notes);
 
     if (data.timeStart && data.timeEnd && data.timeEnd <= data.timeStart) {
       var eEl = document.getElementById('eTimeEnd');
