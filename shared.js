@@ -735,15 +735,16 @@ function compressImage(file, maxWidth, maxSizeMB) {
 
 function compressWithCanvas(img, maxWidth, maxBytes, done) {
   var canvas = document.createElement('canvas');
-  var ratio = Math.min(1, maxWidth / img.width);
+  // Limit longest edge to maxWidth (covers both portrait and landscape)
+  var ratio = Math.min(1, maxWidth / img.width, maxWidth / img.height);
   canvas.width = Math.round(img.width * ratio);
   canvas.height = Math.round(img.height * ratio);
 
   var ctx = canvas.getContext('2d');
   ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-  // Iterative compression: start at 0.6, lower until under maxBytes
-  var qualities = [0.6, 0.4, 0.3];
+  // Start at 0.8 quality; step down only if result exceeds maxBytes
+  var qualities = [0.8, 0.6, 0.4, 0.3];
   var attempt = 0;
 
   function tryCompress() {
