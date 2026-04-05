@@ -523,6 +523,21 @@ a {
   background: var(--color-offline);
 }
 
+/* --- Muted link button (e.g. Logout in dashboard header) --- */
+.btn-link-muted {
+  background: none;
+  border: none;
+  padding: 4px 0;
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.btn-link-muted:hover {
+  color: var(--color-text);
+}
+
 /* --- Quick Buttons Grid --- */
 .quick-buttons {
   display: grid;

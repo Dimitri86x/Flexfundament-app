@@ -13,58 +13,45 @@
 <body>
 
   <div class="page" id="page">
+
     <!-- Greeting -->
     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:var(--spacing-md);">
       <div>
         <h1 style="font-size:1.25rem; font-weight:600;" id="greeting">Hallo!</h1>
         <p class="text-secondary" style="font-size:0.85rem;" id="greetingDate"></p>
       </div>
-      <button class="btn btn-secondary" id="btnLogout" style="font-size:0.8rem;">Abmelden</button>
+      <button class="btn-link-muted" id="btnLogout">Abmelden</button>
     </div>
 
-    <!-- Quick Buttons -->
-    <div class="quick-buttons">
+    <!-- Quick Actions -->
+    <div class="quick-buttons" style="margin-bottom:var(--spacing-lg);">
+      <a href="reports.html?new=1" class="quick-btn">
+        <span class="quick-btn-icon">&#128203;</span>
+        Neuer Bericht
+      </a>
       <a href="projects.html?new=1" class="quick-btn">
         <span class="quick-btn-icon">&#128204;</span>
-        Neues Projekt anlegen
+        Neues Projekt
       </a>
-      <a href="projects.html" class="quick-btn">
-        <span class="quick-btn-icon">&#128194;</span>
-        Projekte
+      <a href="drives.html?new=1" class="quick-btn">
+        <span class="quick-btn-icon">&#128663;</span>
+        Neue Fahrt
+      </a>
+      <a href="costs.html?new=1" class="quick-btn">
+        <span class="quick-btn-icon">&#128176;</span>
+        Neue Kosten
       </a>
     </div>
 
-    <!-- Today's Appointments -->
-    <div class="section-title">Heutige Termine</div>
-    <div id="widgetToday" class="card">
-      <p class="list-empty">Noch keine Daten</p>
-    </div>
+    <!-- Upcoming Appointments (today + next 7 days, hidden if none) -->
+    <div id="sectionTermine"></div>
 
-    <!-- Month Calendar -->
-    <div class="section-title">Monatsuebersicht</div>
-    <div id="widgetCalendar" class="card">
-      <div id="calMonth" style="font-weight:600;text-align:center;margin-bottom:8px;"></div>
-      <table id="calGrid" style="width:100%;border-collapse:collapse;font-size:0.8rem;text-align:center;"></table>
-      <div id="calDayDetail" style="margin-top:8px;"></div>
-    </div>
+    <!-- Open Reports (hidden if none) -->
+    <div id="sectionReports"></div>
 
-    <!-- Open Reports -->
-    <div class="section-title">Offene Einsatzberichte</div>
-    <div id="widgetReports" class="card">
-      <p class="list-empty">Noch keine Daten</p>
-    </div>
+    <!-- Open Costs (hidden if none) -->
+    <div id="sectionCosts"></div>
 
-    <!-- Recent Drives -->
-    <div class="section-title">Letzte Fahrten</div>
-    <div id="widgetDrives" class="card">
-      <p class="list-empty">Noch keine Daten</p>
-    </div>
-
-    <!-- Open Costs -->
-    <div class="section-title">Offene Kosten</div>
-    <div id="widgetCosts" class="card">
-      <p class="list-empty">Noch keine Daten</p>
-    </div>
   </div>
 
   <!-- Firebase SDK (compat v10.12.0) -->
@@ -75,32 +62,23 @@
   <script src="shared.js"></script>
   <script>
     initApp(function(user) {
-      // Render navigation
       renderNav('dashboard');
 
-      // Set greeting
+      // Greeting
       var name = user.displayName || user.email || 'Benutzer';
-      var firstName = name.split(' ')[0];
-      document.getElementById('greeting').textContent = 'Hallo, ' + firstName + '!';
-
-      // Set date
+      document.getElementById('greeting').textContent = 'Hallo, ' + name.split(' ')[0] + '!';
       var now = new Date();
       var days = ['Sonntag','Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag'];
       var months = ['Januar','Februar','Maerz','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
       document.getElementById('greetingDate').textContent =
         days[now.getDay()] + ', ' + now.getDate() + '. ' + months[now.getMonth()] + ' ' + now.getFullYear();
 
-      // Logout
-      document.getElementById('btnLogout').addEventListener('click', function() {
-        signOut();
-      });
+      document.getElementById('btnLogout').addEventListener('click', signOut);
 
-      // Sync data, then refresh widgets
       if (isOnline) {
         Promise.all([
           syncWithFirebase('projects'),
           syncWithFirebase('reports'),
-          syncWithFirebase('drives'),
           syncWithFirebase('costs')
         ]).then(refreshWidgets);
       } else {
@@ -109,208 +87,105 @@
     });
 
     function refreshWidgets() {
-      renderTodayWidget();
-      renderCalendarWidget();
+      renderTermineWidget();
       renderReportsWidget();
-      renderDrivesWidget();
       renderCostsWidget();
     }
 
-    function renderTodayWidget() {
-      var container = document.getElementById('widgetToday');
-      var today = new Date().toISOString().split('T')[0];
+    // Returns a section block, or empty string if no items
+    function makeSection(title, itemsHtml) {
+      if (!itemsHtml) return '';
+      return '<div class="section-title">' + title + '</div>' +
+             '<div class="card" style="margin-bottom:var(--spacing-md);">' + itemsHtml + '</div>';
+    }
 
-      var projects = getActiveItems('projects').filter(function(p) {
-        return p.executionDate === today;
+    function makeRow(href, primary, secondary, badge) {
+      return '<a href="' + href + '" class="card-clickable" ' +
+        'style="display:block;padding:10px 0;border-bottom:1px solid var(--color-border);">' +
+        '<span style="font-weight:500;">' + esc(primary) + '</span>' +
+        (secondary ? ' <span class="text-secondary" style="font-size:0.85rem;">' + secondary + '</span>' : '') +
+        (badge ? ' ' + badge : '') +
+        '</a>';
+    }
+
+    function esc(str) {
+      var d = document.createElement('div');
+      d.textContent = str || '';
+      return d.innerHTML;
+    }
+
+    function renderTermineWidget() {
+      var todayStr = new Date().toISOString().split('T')[0];
+      var limitDate = new Date();
+      limitDate.setDate(limitDate.getDate() + 7);
+      var limitStr = limitDate.toISOString().split('T')[0];
+
+      var items = getActiveItems('projects').filter(function(p) {
+        return p.executionDate && p.executionDate >= todayStr && p.executionDate <= limitStr;
+      }).sort(function(a, b) {
+        return (a.executionDate + (a.executionTime || '')).localeCompare(b.executionDate + (b.executionTime || ''));
       });
 
-      if (projects.length === 0) {
-        container.innerHTML = '<p class="list-empty">Keine Termine heute</p>';
+      if (items.length === 0) {
+        document.getElementById('sectionTermine').innerHTML = '';
         return;
       }
 
-      container.innerHTML = projects.map(function(p) {
-        var status = p.status || 'aktiv';
-        var badgeClass = status === 'abgeschlossen' ? 'badge-abgeschlossen' : 'badge-aktiv';
-        return '<a href="projects.html?id=' + p.id + '" class="card-clickable" style="display:block;padding:8px 0;border-bottom:1px solid var(--color-border);">' +
-               '<strong>' + escapeHtml(p.name || 'Projekt') + '</strong>' +
-               (p.executionTime ? ' <span class="text-secondary">' + p.executionTime.substring(0,5) + '</span>' : '') +
-               ' <span class="badge ' + badgeClass + '">' + status + '</span></a>';
+      var rows = items.map(function(p) {
+        var isToday = p.executionDate === todayStr;
+        var dateLabel = isToday
+          ? ('Heute' + (p.executionTime ? ', ' + p.executionTime.substring(0, 5) : ''))
+          : (formatDate(p.executionDate) + (p.executionTime ? ', ' + p.executionTime.substring(0, 5) : ''));
+        var badgeClass = p.status === 'abgeschlossen' ? 'badge-abgeschlossen' : 'badge-aktiv';
+        var badge = '<span class="badge ' + badgeClass + '">' + (p.status || 'aktiv') + '</span>';
+        return makeRow('projects.html?id=' + p.id, p.name || 'Projekt', dateLabel, badge);
       }).join('');
-    }
 
-    function renderCalendarWidget() {
-      var now = new Date();
-      var year = now.getFullYear();
-      var month = now.getMonth();
-      var monthNames = ['Januar','Februar','Maerz','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
-
-      document.getElementById('calMonth').textContent = monthNames[month] + ' ' + year;
-
-      // Get projects with dates in this month
-      var projects = getActiveItems('projects');
-      var dateMap = {}; // 'YYYY-MM-DD' -> [projects]
-      projects.forEach(function(p) {
-        if (!p.executionDate) return;
-        var d = new Date(p.executionDate);
-        if (d.getFullYear() === year && d.getMonth() === month) {
-          if (!dateMap[p.executionDate]) dateMap[p.executionDate] = [];
-          dateMap[p.executionDate].push(p);
-        }
-      });
-
-      // Build calendar grid
-      var firstDay = new Date(year, month, 1).getDay(); // 0=Sun
-      var daysInMonth = new Date(year, month + 1, 0).getDate();
-      var todayStr = now.toISOString().split('T')[0];
-
-      // Start on Monday (adjust firstDay: 0=Sun -> 6, 1=Mon -> 0, etc.)
-      var startOffset = (firstDay + 6) % 7;
-
-      var html = '<thead><tr>';
-      ['Mo','Di','Mi','Do','Fr','Sa','So'].forEach(function(d) {
-        html += '<th style="padding:4px;color:var(--color-text-secondary);font-weight:500;font-size:0.75rem;">' + d + '</th>';
-      });
-      html += '</tr></thead><tbody><tr>';
-
-      // Empty cells before first day
-      for (var e = 0; e < startOffset; e++) {
-        html += '<td style="padding:4px;"></td>';
-      }
-
-      for (var day = 1; day <= daysInMonth; day++) {
-        var dateStr = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
-        var hasProjects = dateMap[dateStr];
-        var isToday = dateStr === todayStr;
-
-        var bg = 'transparent';
-        var cursor = 'default';
-        if (hasProjects) {
-          var allDone = hasProjects.every(function(p) { return p.status === 'abgeschlossen'; });
-          bg = allDone ? '#c8e6c9' : '#e0e0e0';
-          cursor = 'pointer';
-        }
-
-        var todayBorder = isToday ? 'border:2px solid var(--color-primary);' : '';
-
-        html += '<td style="padding:2px;">' +
-          '<div data-cal-date="' + dateStr + '" style="width:32px;height:32px;margin:auto;display:flex;align-items:center;justify-content:center;' +
-          'border-radius:50%;background:' + bg + ';cursor:' + cursor + ';font-size:0.8rem;' + todayBorder + '">' +
-          day + '</div></td>';
-
-        if ((startOffset + day) % 7 === 0 && day < daysInMonth) {
-          html += '</tr><tr>';
-        }
-      }
-
-      // Fill remaining cells
-      var remaining = (startOffset + daysInMonth) % 7;
-      if (remaining > 0) {
-        for (var r = remaining; r < 7; r++) {
-          html += '<td style="padding:4px;"></td>';
-        }
-      }
-      html += '</tr></tbody>';
-
-      document.getElementById('calGrid').innerHTML = html;
-
-      // Click on days with projects
-      document.getElementById('calGrid').querySelectorAll('[data-cal-date]').forEach(function(cell) {
-        cell.addEventListener('click', function() {
-          var d = cell.getAttribute('data-cal-date');
-          if (dateMap[d]) showCalDayDetail(d, dateMap[d]);
-        });
-      });
-
-      document.getElementById('calDayDetail').innerHTML = '';
-    }
-
-    function showCalDayDetail(dateStr, projects) {
-      var detail = document.getElementById('calDayDetail');
-      detail.innerHTML = '<div style="font-weight:600;font-size:0.85rem;margin-bottom:4px;">' + formatDate(dateStr) + ':</div>' +
-        projects.map(function(p) {
-          var status = p.status || 'aktiv';
-          var badgeClass = status === 'abgeschlossen' ? 'badge-abgeschlossen' : 'badge-aktiv';
-          return '<a href="projects.html?id=' + p.id + '" style="display:block;padding:4px 0;font-size:0.85rem;">' +
-            escapeHtml(p.name || 'Projekt') +
-            (p.executionTime ? ' ' + p.executionTime.substring(0,5) : '') +
-            ' <span class="badge ' + badgeClass + '">' + status + '</span></a>';
-        }).join('');
+      document.getElementById('sectionTermine').innerHTML =
+        makeSection('Termine', rows);
     }
 
     function renderReportsWidget() {
-      var container = document.getElementById('widgetReports');
       var reports = getActiveItems('reports')
         .filter(function(r) { return r.status === 'entwurf'; })
         .slice(0, 5);
 
       if (reports.length === 0) {
-        container.innerHTML = '<p class="list-empty">Keine offenen Berichte</p>';
+        document.getElementById('sectionReports').innerHTML = '';
         return;
       }
 
-      container.innerHTML = reports.map(function(r) {
-        var label = r.projectName || 'Einsatzbericht';
+      var rows = reports.map(function(r) {
         var date = r.date ? formatDate(r.date) : '';
-        return '<a href="reports.html?id=' + r.id + '" class="card-clickable" style="display:block;padding:8px 0;border-bottom:1px solid var(--color-border);">' +
-               '<strong>' + escapeHtml(label) + '</strong>' +
-               (date ? ' <span class="text-secondary">' + date + '</span>' : '') +
-               ' <span class="badge badge-entwurf">Entwurf</span></a>';
+        var badge = '<span class="badge badge-entwurf">Entwurf</span>';
+        return makeRow('reports.html?id=' + r.id, r.projectName || 'Einsatzbericht', date, badge);
       }).join('');
-    }
 
-    function renderDrivesWidget() {
-      var container = document.getElementById('widgetDrives');
-      var drives = getActiveItems('drives').slice(0, 5);
-
-      if (drives.length === 0) {
-        container.innerHTML = '<p class="list-empty">Keine Fahrten</p>';
-        return;
-      }
-
-      container.innerHTML = drives.map(function(d) {
-        var route = (d.startLocation || '?') + ' → ' + (d.endLocation || '?');
-        var date = d.date ? formatDate(d.date) : '';
-        var km = d.kmDriven || '';
-        return '<a href="drives.html?id=' + d.id + '" class="card-clickable" style="display:block;padding:8px 0;border-bottom:1px solid var(--color-border);">' +
-               '<strong>' + escapeHtml(route) + '</strong>' +
-               (km ? ' <span class="text-secondary">' + km + ' km</span>' : '') +
-               (date ? '<br><span class="text-secondary">' + date + '</span>' : '') +
-               '</a>';
-      }).join('');
+      document.getElementById('sectionReports').innerHTML =
+        makeSection('Offene Einsatzberichte', rows);
     }
 
     function renderCostsWidget() {
-      var container = document.getElementById('widgetCosts');
-      var costs = getActiveItems('costs')
-        .filter(function(c) { return c.status !== 'bezahlt'; });
+      var costs = getActiveItems('costs').filter(function(c) { return c.status !== 'bezahlt'; });
 
-      var total = costs.reduce(function(sum, c) { return sum + (parseFloat(c.amount) || 0); }, 0);
-      var display = costs.slice(0, 5);
-
-      if (display.length === 0) {
-        container.innerHTML = '<p class="list-empty">Keine offenen Kosten</p>';
+      if (costs.length === 0) {
+        document.getElementById('sectionCosts').innerHTML = '';
         return;
       }
 
-      var html = '<div style="font-weight:600;margin-bottom:8px;">Gesamt: ' + total.toFixed(2).replace('.', ',') + ' &euro;</div>';
-      html += display.map(function(c) {
-        var label = c.category || 'Kosten';
-        var amount = parseFloat(c.amount) || 0;
+      var total = costs.reduce(function(sum, c) { return sum + (parseFloat(c.amount) || 0); }, 0);
+
+      var rows = costs.slice(0, 5).map(function(c) {
+        var amount = (parseFloat(c.amount) || 0).toFixed(2).replace('.', ',') + '\u00a0\u20ac';
         var date = c.date ? formatDate(c.date) : '';
-        return '<a href="costs.html?id=' + c.id + '" class="card-clickable" style="display:block;padding:8px 0;border-bottom:1px solid var(--color-border);">' +
-               '<strong>' + escapeHtml(label) + '</strong> ' + amount.toFixed(2).replace('.', ',') + ' &euro;' +
-               (date ? '<br><span class="text-secondary">' + date + '</span>' : '') +
-               '</a>';
+        return makeRow('costs.html?id=' + c.id, (c.category || 'Kosten') + ' \u2014 ' + amount, date, '');
       }).join('');
 
-      container.innerHTML = html;
-    }
+      var totalLine = '<div style="font-weight:600;padding:4px 0 10px;border-bottom:1px solid var(--color-border);color:var(--color-text);">' +
+        'Gesamt offen: ' + total.toFixed(2).replace('.', ',') + '\u00a0\u20ac</div>';
 
-    function escapeHtml(str) {
-      var div = document.createElement('div');
-      div.textContent = str;
-      return div.innerHTML;
+      document.getElementById('sectionCosts').innerHTML =
+        makeSection('Offene Kosten', totalLine + rows);
     }
   </script>
 </body>
