@@ -265,6 +265,16 @@ function setupTags() {
     });
   });
 
+  // Commit pending text when input loses focus (e.g. user taps Save directly)
+  input.addEventListener('blur', function() {
+    var val = input.value.trim().replace(/,$/, '');
+    if (val) {
+      addWorker(val);
+      input.value = '';
+      acList.style.display = 'none';
+    }
+  });
+
   input.addEventListener('keydown', function(e) {
     if ((e.key === 'Enter' || e.key === ',') && input.value.trim()) {
       e.preventDefault();
