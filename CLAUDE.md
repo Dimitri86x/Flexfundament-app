@@ -1,96 +1,127 @@
-# Flexfundament App – Projektanweisung
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Projekt
-Interne WebApp für Liederflex GmbH (FlexFundament) zur Baustellen-Dokumentation und Projektsteuerung.
 
-## Technischer Stack
-- **Frontend:** Vanilla HTML/CSS/JS (kein Framework, kein Build-Tool)
-- **Backend:** Firebase Realtime Database (europe-west1) + Firebase Auth + Firebase Storage
-- **Firebase SDK:** compat v10.12.0 via CDN
-- **Hosting:** GitHub Pages
-- **PDF:** jsPDF oder html2pdf (client-seitig)
-- **PWA:** manifest.json + Service Worker
+Interne PWA für Liederflex GmbH zur Baustellen-Dokumentation und Projektsteuerung.
+Gehostet auf GitHub Pages: kein Build-Schritt, kein Framework, kein Package-Manager.
+
+## Entwicklung
+
+Da es kein Build-Tool gibt, direkt die HTML-Dateien im Browser öffnen oder einen lokalen Webserver starten:
+
+```bash
+# Lokaler Dev-Server (Python)
+python3 -m http.server 8080
+
+# Oder mit npx (falls Node installiert)
+npx serve .
+```
+
+Testen auf echtem Gerät: Nach jedem Commit ist die App auf GitHub Pages live.
+Service Worker cacht aggressiv — zum Testen im Browser: DevTools → Application → Service Workers → „Update on reload" aktivieren.
 
 ## Architektur
-Multi-File SPA-ähnlich: Jedes Modul ist eine eigene HTML-Datei, gemeinsamer Code in shared.js und shared.css.
 
-```
-flexfundament-app/
-├── index.html          # Login (Google Sign-In) + Redirect zu Dashboard
-├── dashboard.html      # Startseite mit Widgets + Schnellbuttons
-├── projects.html       # Projektliste + Projekt-Formular
-├── reports.html        # Einsatzberichte (Liste + Formular + PDF)
-├── documents.html      # Dokument-Upload + Liste
-├── drives.html         # Fahrtenbuch (Liste + Formular)
-├── costs.html          # Kosten (Liste + Formular)
-├── calendar.html       # Kalenderansicht (Woche/Monat/Tag)
-├── shared.js           # Firebase-Config, Auth-Guard, Sync, Helpers
-├── shared.css          # Navigation, Layout, Formulare, Responsive
-├── manifest.json       # PWA-Manifest
-└── sw.js               # Service Worker
+Multi-File SPA: Jede Seite ist eine eigene HTML-Datei, gemeinsamer Code in `shared.js` / `shared.css`.
+
+| Datei | Zweck |
+|---|---|
+| `index.html` | Login (Google Sign-In) |
+| `dashboard.html` | Übersicht mit Widgets |
+| `projects.html` | Projektliste + Formular |
+| `reports.html` | Einsatzberichte (Liste + Formular + PDF-Export) |
+| `documents.html` | Dokument-Upload + Liste |
+| `drives.html` | Fahrtenbuch |
+| `costs.html` | Kosten |
+| `shared.js` | Firebase-Config, Auth-Guard, Sync, Helpers |
+| `shared.css` | Navigation, Layout, Formulare, Responsive |
+| `sw.js` | Service Worker (Cache-first für App-Shell) |
+
+### Seitenstruktur (jede Seite)
+
+```html
+<!-- Firebase SDK compat v10.12.0 via CDN -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<!-- + auth, database, storage -->
+<script src="shared.js"></script>
+<script>
+  initApp(function(user) { /* Seiten-Logik */ });
+</script>
 ```
 
-## Firebase-Konfiguration
-- **Auth:** Google Sign-In (signInWithRedirect für Mobile-Kompatibilität)
-- **Database:** Realtime Database, Region europe-west1
-- **Database-Pfade (flach):** projects/, reports/, documents/, drives/, costs/
-- **Storage-Pfade:** files/{projectId}/{pushId}
-- **IDs:** Firebase Push-IDs (automatisch)
+`initApp(callback)` übernimmt Auth-Guard und ruft den Callback mit dem eingeloggten User auf.
 
-## Globale Felder auf JEDEM Datensatz
-```json
-{
-  "savedAt": 1711700000000,    // Unix-Timestamp ms
-  "savedBy": "firebase-uid",   // Auth UID
-  "deleted": false              // Soft-Delete
-}
-```
+## Firebase
+
+- **SDK:** compat v10.12.0 — NICHT das modulare SDK verwenden
+- **Auth:** Popup mit Redirect-Fallback (`signInWithGoogle()` in shared.js)
+- **Realtime Database:** `europe-west1`, flache Pfade: `projects/`, `reports/`, `documents/`, `drives/`, `costs/`
+- **Storage:** `files/{projectId}/{pushId}`
 
 ## Offline-Sync-Strategie
-1. Daten werden IMMER zuerst in localStorage geschrieben
-2. Bei Netzwerk: automatisch zu Firebase synchronisieren
-3. Beim Laden: Firebase-Daten mit localStorage mergen (Last-Write-Wins via savedAt)
-4. Konflikt: Höherer savedAt-Wert gewinnt
-5. Listen zeigen nur Datensätze mit deleted !== true
 
-## Statusfelder
-- **Projekte:** status = "aktiv" | "abgeschlossen" (Default: "aktiv")
-- **Einsatzberichte:** status = "entwurf" | "abgeschlossen" (Default: "entwurf")
-- **Kosten:** status = "offen" | "bezahlt" (Default: "offen")
+1. Daten immer zuerst in `localStorage` schreiben (Prefix `ff_`)
+2. Bei Online-Status: automatisch mit Firebase synchronisieren
+3. Last-Write-Wins via `savedAt`-Timestamp
+4. Base64-Bilddaten werden VOR dem localStorage-Schreiben gestrippt (5MB-Limit)
 
-## Validierungsregeln
-- Kilometerstand Ende > Start (Fahrtenbuch)
-- Arbeit Ende > Arbeit Beginn (Einsatzberichte)
-- Betrag > 0 (Kosten)
-- Datum nicht in der Zukunft (alle Module)
-- Pflichtfelder: nur Warnung (gelb), kein Blockieren — Entwürfe dürfen unvollständig sein
-- Fehleranzeige: Inline unter dem Feld, rot
+Jeder Datensatz hat diese Pflichtfelder:
+```js
+{ savedAt: Date.now(), savedBy: auth.currentUser.uid, deleted: false }
+```
+
+### Wichtige Hilfsfunktionen (shared.js)
+
+| Funktion | Zweck |
+|---|---|
+| `saveToLocal(collection, id, data)` | Speichert lokal + synct zu Firebase |
+| `loadFromLocal(collection)` | Lädt alle Items aus localStorage |
+| `getActiveItems(collection)` | Gibt nicht-gelöschte Items zurück, sortiert nach savedAt |
+| `getItemById(collection, id)` | Einzelnes Item per ID |
+| `softDelete(collection, id, label)` | Setzt `deleted=true` mit Bestätigungsdialog |
+| `syncWithFirebase(collection)` | Bidirektionaler Sync (Last-Write-Wins) |
+| `getAutocompleteSuggestions(collection, field)` | Sammelt bisherige Eingaben für Autocomplete |
+| `compressImage(file, maxWidth, maxSizeMB)` | Bildkomprimierung vor Upload (HEIC→JPEG) |
+| `showToast(message, type)` | Snackbar-Meldung |
+| `renderNav(activeTab)` | Navigation in Body einfügen |
+| `getUrlParam(name)` | URL-Parameter lesen |
+| `initCollapsibles()` | Einklappbare Bereiche aktivieren |
 
 ## Navigation
-- Tab-Leiste oben: Dashboard | Projekte | Kalender | Mehr…
-- "Mehr…"-Dropdown: Fahrtenbuch, Kosten, Dokumente
-- Unterseiten: Zurück-Button oben links
-- Aktiver Tab wird visuell hervorgehoben
 
-## UX-Regeln
-- **Mobile-first:** min-width Eingabefelder, große Touch-Targets (min 44px)
-- **Einklappbare Bereiche:** standardmäßig eingeklappt (Unterlagenstatus, Bauverhinderung, Fotos, Gesprächsnotizen)
-- **Bedingte Logik:** Bauverhinderung = Ja → Grund + Beschreibung einblenden
-- **Autocomplete:** Mitarbeiter-, Fahrer-, Fahrzeug-Felder sammeln bisherige Einträge aus der DB und schlagen sie vor
-- **Soft-Delete:** Bestätigungsdialog, deleted=true setzen, in Listen ausblenden
-- **Kamera-Upload:** accept="image/*" capture="environment" für Fotos
-- **Datei-Upload:** Max 5 MB, alle Dateitypen, Bilder auf max 1920px komprimieren
+Tab-Leiste oben: Dashboard | Projekte | Kalender | Mehr…  
+„Mehr…"-Dropdown: Einsatzberichte, Fahrtenbuch, Kosten, Dokumente
+
+Jede Seite ruft `renderNav('seitenname')` auf. Aktive Tab-IDs:
+`dashboard`, `projects`, `calendar`, `reports`, `drives`, `costs`, `documents`
+
+## Statuswerte
+
+- Projekte: `status = "aktiv" | "abgeschlossen"`
+- Einsatzberichte: `status = "entwurf" | "abgeschlossen"`
+- Kosten: `status = "offen" | "bezahlt"`
+
+## Validierungsregeln
+
+- Kilometerstand Ende > Start
+- Arbeit Ende > Arbeit Beginn
+- Betrag > 0
+- Datum nicht in der Zukunft
+- Pflichtfelder: nur gelbe Warnung, KEIN Blockieren — Entwürfe dürfen unvollständig sein
+- Fehleranzeige: Inline unter dem Feld, rot
 
 ## Code-Stil
-- Deutsch für UI-Texte, Englisch für Variablen/Funktionen/Kommentare
-- CSS-Variablen für Farben und Abstände
-- Kein !important
-- Event-Delegation wo sinnvoll
-- Console.log nur für Debugging, nicht in Produktion
 
-## Wichtige Erfahrungen aus früheren Apps
-- signInWithPopup funktioniert NICHT zuverlässig in PWA/iOS → IMMER signInWithRedirect verwenden
-- Firebase compat SDK v10.12.0, NICHT modular SDK (zu komplex für Single-File)
-- localStorage kann bis 5MB speichern — bei vielen Fotos werden nur URLs gespeichert, nicht die Bilder selbst
-- PDF-Erzeugung: iOS Safari hat Einschränkungen mit Blob-URLs → window.open mit Data-URL als Fallback
-- Service Worker: Cache nur App-Shell (HTML, CSS, JS), NICHT Firebase-API-Calls
+- UI-Texte auf **Deutsch**, Variablen/Funktionen/Kommentare auf **Englisch**
+- CSS-Variablen für Farben und Abstände, kein `!important`
+- Firebase compat API (z.B. `firebase.database()`, nicht `getDatabase(app)`)
+- Event-Delegation wo sinnvoll
+
+## Bekannte Fallstricke
+
+- `signInWithPopup` ist auf iOS/PWA unzuverlässig → `signInWithGoogle()` in shared.js verwendet Popup mit automatischem Redirect-Fallback
+- iOS Safari: Blob-URLs für PDFs funktionieren nicht → `window.open` mit Data-URL als Fallback
+- Service Worker: Nur App-Shell cachen (HTML, CSS, JS), **keine** Firebase-API-Calls
+- localStorage-Limit 5MB: Base64-Bilddaten werden per `stripBase64()` vor dem Schreiben entfernt, nur URLs werden gespeichert

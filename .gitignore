@@ -1,0 +1,15 @@
+# Firebase Emulator logs (generated locally, never commit)
+firebase-debug.log
+database-debug.log
+ui-debug.log
+*.log
+
+# macOS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+
+# Local Claude Code settings
+.claude/settings.local.json
