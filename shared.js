@@ -474,6 +474,10 @@ function uploadFilesToStorage(collection, recordId, filesArray, subPath) {
     var safeName = (clone.name || 'file').replace(/[/\\]/g, '_');
     var storagePath = basePath + '/' + index + '_' + safeName;
 
+    // ~0.75 bytes per base64 char → approx real size
+    var approxKB = (clone.dataUrl.length * 0.75 / 1024).toFixed(1);
+    console.log('[Upload] ' + clone.name + ' | ~' + approxKB + ' KB | path: ' + storagePath);
+
     // Offline — queue for later upload so stripBase64 doesn't silently discard the file
     if (!isOnline) {
       var pendingId = _makePendingId(collection, recordId, subPath, index);
@@ -704,13 +708,28 @@ function getAutocompleteSuggestions(collection, field) {
 
 // --- Image Compression ---
 
+// Extension-based image detection — fallback when browser reports no/wrong MIME type
+// (common on Android file pickers, HEIC gallery exports, some older WebViews)
+var _IMAGE_EXTENSIONS = /\.(jpe?g|png|gif|webp|heic|heif|bmp|avif|tiff?)$/i;
+
+function _looksLikeImage(file) {
+  return file.type.startsWith('image/') || _IMAGE_EXTENSIONS.test(file.name);
+}
+
 function compressImage(file, maxWidth, maxSizeMB) {
   maxWidth = maxWidth || 1600;
   maxSizeMB = maxSizeMB || 2;
   var maxBytes = maxSizeMB * 1024 * 1024;
 
   return new Promise(function(resolve) {
-    if (!file.type.startsWith('image/')) {
+    var isImg = _looksLikeImage(file);
+    console.log('[Compress] IN  ' + file.name +
+      ' | type: ' + (file.type || '(leer)') +
+      ' | ' + (file.size / 1024).toFixed(1) + ' KB' +
+      ' | isImage: ' + isImg);
+
+    if (!isImg) {
+      console.log('[Compress] SKIP (kein Bild) → ' + file.name);
       resolve(file);
       return;
     }
@@ -719,14 +738,21 @@ function compressImage(file, maxWidth, maxSizeMB) {
     var url = URL.createObjectURL(file);
     img.onload = function() {
       URL.revokeObjectURL(url);
-      // Always compress through canvas (converts HEIC→JPEG, reduces size)
+      console.log('[Compress] Bild geladen: ' + img.width + 'x' + img.height + 'px → komprimiere...');
       compressWithCanvas(img, maxWidth, maxBytes, function(blob) {
         blob._originalSize = file.size;
+        console.log('[Compress] OUT ' + file.name +
+          ' | ' + (file.size / 1024).toFixed(1) + ' KB → ' +
+          (blob.size / 1024).toFixed(1) + ' KB' +
+          ' (' + Math.round((blob.size / file.size) * 100) + '%)');
         resolve(blob);
       });
     };
     img.onerror = function() {
       URL.revokeObjectURL(url);
+      // HEIC on desktop Chrome can't be rendered — return original, log clearly
+      console.warn('[Compress] WARN Bild konnte nicht geladen werden (HEIC auf Desktop?).' +
+        ' Original wird verwendet: ' + file.name);
       resolve(file);
     };
     img.src = url;
@@ -739,6 +765,8 @@ function compressWithCanvas(img, maxWidth, maxBytes, done) {
   var ratio = Math.min(1, maxWidth / img.width, maxWidth / img.height);
   canvas.width = Math.round(img.width * ratio);
   canvas.height = Math.round(img.height * ratio);
+  console.log('[Compress] Canvas: ' + canvas.width + 'x' + canvas.height +
+    'px (ratio: ' + ratio.toFixed(3) + ')');
 
   var ctx = canvas.getContext('2d');
   ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
@@ -751,6 +779,9 @@ function compressWithCanvas(img, maxWidth, maxBytes, done) {
     var quality = qualities[attempt] || 0.3;
     canvas.toBlob(function(blob) {
       if (!blob) { done(new Blob([])); return; }
+      console.log('[Compress] Qualität ' + quality +
+        ' → ' + (blob.size / 1024).toFixed(1) + ' KB' +
+        (blob.size > maxBytes ? ' (zu groß, nächste Stufe)' : ' ✓'));
       if (blob.size <= maxBytes || attempt >= qualities.length - 1) {
         done(blob);
       } else {

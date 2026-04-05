@@ -370,9 +370,14 @@
 
       fileArr.forEach(function(file) {
         var sizeMB = (file.size / (1024 * 1024)).toFixed(1);
-        var isImage = file.type.startsWith('image/');
+        // Use extension fallback: file.type may be empty on Android/HEIC gallery
+        var isImage = file.type.startsWith('image/') || /\.(jpe?g|png|gif|webp|heic|heif|bmp|avif)$/i.test(file.name);
         var maxSize = isImage ? 10 * 1024 * 1024 : 20 * 1024 * 1024;
         var maxLabel = isImage ? '10' : '20';
+        console.log('[Docs] handlePosUpload:', file.name,
+          '| type:', file.type || '(leer)',
+          '| size:', (file.size/1024).toFixed(1)+'KB',
+          '| isImage:', isImage);
         if (file.size > maxSize) {
           showToast(file.name + ' zu gross (' + sizeMB + ' MB). Maximum ist ' + maxLabel + ' MB.', 'error');
           if (--remaining === 0) { savePositionFields(); renderPositions(); }

@@ -388,9 +388,14 @@
         if (!el) return;
         el.addEventListener('change', function(e) {
           Array.from(e.target.files).forEach(function(file) {
-            var isImage = file.type.startsWith('image/');
+            // Use extension fallback: file.type may be empty on Android/HEIC gallery
+            var isImage = file.type.startsWith('image/') || /\.(jpe?g|png|gif|webp|heic|heif|bmp|avif)$/i.test(file.name);
             var maxSize = isImage ? 10 * 1024 * 1024 : 20 * 1024 * 1024;
             var maxLabel = isImage ? '10' : '20';
+            console.log('[Drives] file:', file.name,
+              '| type:', file.type || '(leer)',
+              '| size:', (file.size/1024).toFixed(1)+'KB',
+              '| isImage:', isImage);
             if (file.size > maxSize) {
               var sizeMB = (file.size / (1024 * 1024)).toFixed(1);
               showToast(file.name + ' zu gross (' + sizeMB + ' MB). Maximum ist ' + maxLabel + ' MB.', 'error');
@@ -400,7 +405,7 @@
               compressImage(file).then(function(blob) {
                 var reader = new FileReader();
                 reader.onload = function() {
-                  photos.push({ dataUrl: reader.result, name: file.name, type: file.type });
+                  photos.push({ dataUrl: reader.result, name: file.name, type: blob.type || file.type });
                   renderPhotos();
                 };
                 reader.readAsDataURL(blob);
