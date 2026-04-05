@@ -528,7 +528,10 @@ document.getElementById('reportForm').addEventListener('submit', function(e) {
     function warn(id, cond) {
       var el = document.getElementById(id);
       if (el) el.classList.toggle('visible', cond);
-      if (cond) hasWarning = true;
+      if (cond) {
+        hasWarning = true;
+        console.warn('[Reports] Warnung aktiv: ' + id);
+      }
     }
 
     warn('wProject', !data.projectId);
@@ -541,9 +544,11 @@ document.getElementById('reportForm').addEventListener('submit', function(e) {
       var eEl = document.getElementById('eTimeEnd');
       if (eEl) eEl.classList.add('visible');
       hasWarning = true;
+      console.warn('[Reports] Warnung aktiv: eTimeEnd (Ende <= Start)');
     }
 
     var hasActivity = data.actPull || data.actScrew || data.actMontage || data.actSurvey || data.actExtra;
+    console.log('[Reports] hasActivity:', hasActivity, '| actPull:', data.actPull, 'actScrew:', data.actScrew, 'actMontage:', data.actMontage, 'actSurvey:', data.actSurvey, 'actExtra:', JSON.stringify(data.actExtra));
     warn('wActivity', !hasActivity);
 
     if (data.obstacle) warn('wObstacleDesc', !data.obstacleDesc);
