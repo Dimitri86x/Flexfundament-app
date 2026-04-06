@@ -865,6 +865,15 @@ function renderNav(activeTab) {
                         '<span class="online-label">' + (isOnline ? 'Online' : 'Offline') + '</span>';
   tabs.appendChild(indicator);
 
+  var logoLink = document.createElement('a');
+  logoLink.href = 'dashboard.html';
+  logoLink.className = 'nav-logo';
+  var logoImg = document.createElement('img');
+  logoImg.src = 'images/logo-white.webp';
+  logoImg.alt = 'Flexfundament';
+  logoLink.appendChild(logoImg);
+
+  nav.appendChild(logoLink);
   nav.appendChild(tabs);
   document.body.insertBefore(nav, document.body.firstChild);
 
