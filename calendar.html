@@ -208,7 +208,7 @@
       if (projects.length === 0 && reports.length === 0) {
         document.getElementById('calDetail').innerHTML =
           '<div class="section-title">' + formatDate(dateStr) + '</div>' +
-          '<div class="card"><p class="list-empty" style="padding:var(--spacing-lg);">Keine Einträge</p></div>';
+          '<div class="card"><p class="list-empty" style="padding:var(--spacing-md);">Keine Einträge</p></div>';
         return;
       }
 
@@ -217,16 +217,18 @@
 
       if (projects.length > 0) {
         html += projects.map(function(p) {
+          var sub = [];
+          if (p.executionTime) sub.push(formatTime(p.executionTime) + ' Uhr');
           var addr = [p.street, p.city].filter(Boolean).join(', ');
+          if (addr) sub.push(esc(addr));
           var badgeClass = p.status === 'abgeschlossen' ? 'badge-abgeschlossen' : 'badge-aktiv';
-          return '<a href="projects.html?id=' + p.id + '" class="cal-detail-row">' +
-            '<div class="cal-detail-icon cal-dot-project-bg">&#128204;</div>' +
+          return '<a href="projects.html?id=' + p.id + '" class="cal-detail-row cal-row-project">' +
             '<div class="cal-detail-body">' +
-              '<div class="cal-detail-title">' + esc(p.name || 'Projekt') + '</div>' +
-              (p.executionTime ? '<div class="cal-detail-sub">' + formatTime(p.executionTime) + ' Uhr</div>' : '') +
-              (addr ? '<div class="cal-detail-sub">' + esc(addr) + '</div>' : '') +
-              '<span class="badge ' + badgeClass + '" style="margin-top:4px;display:inline-block;">' +
-                (p.status || 'aktiv') + '</span>' +
+              '<div class="cal-detail-title">' +
+                '<span class="cal-detail-title-text">' + esc(p.name || 'Projekt') + '</span>' +
+                '<span class="badge ' + badgeClass + '">' + (p.status || 'aktiv') + '</span>' +
+              '</div>' +
+              (sub.length ? '<div class="cal-detail-sub">' + sub.join(' · ') + '</div>' : '') +
             '</div>' +
             '<div class="cal-detail-arrow">&#8250;</div>' +
           '</a>';
@@ -237,13 +239,13 @@
         html += reports.map(function(r) {
           var workers = (r.workers || []).join(', ');
           var badgeClass = r.status === 'abgeschlossen' ? 'badge-abgeschlossen' : 'badge-entwurf';
-          return '<a href="reports.html?id=' + r.id + '" class="cal-detail-row">' +
-            '<div class="cal-detail-icon cal-dot-report-bg">&#128203;</div>' +
+          return '<a href="reports.html?id=' + r.id + '" class="cal-detail-row cal-row-report">' +
             '<div class="cal-detail-body">' +
-              '<div class="cal-detail-title">' + esc(r.projectName || 'Einsatzbericht') + '</div>' +
+              '<div class="cal-detail-title">' +
+                '<span class="cal-detail-title-text">' + esc(r.projectName || 'Einsatzbericht') + '</span>' +
+                '<span class="badge ' + badgeClass + '">' + (r.status || 'entwurf') + '</span>' +
+              '</div>' +
               (workers ? '<div class="cal-detail-sub">' + esc(workers) + '</div>' : '') +
-              '<span class="badge ' + badgeClass + '" style="margin-top:4px;display:inline-block;">' +
-                (r.status || 'entwurf') + '</span>' +
             '</div>' +
             '<div class="cal-detail-arrow">&#8250;</div>' +
           '</a>';
