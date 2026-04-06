@@ -2,13 +2,13 @@
   "rules": {
     "users": {
       "$uid": {
-        ".read":  "auth != null",
-        ".write": "auth != null && auth.uid === $uid"
+        ".read": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
+        ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || (auth.uid === $uid && (!data.exists() ? newData.child('role').val() === 'worker' : newData.child('role').val() === data.child('role').val())))"
       }
     },
     "projectAssignments": {
       ".read":  "auth != null",
-      ".write": "auth != null"
+      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'"
     },
     "projects":  { ".read": "auth != null", ".write": "auth != null" },
     "reports":   { ".read": "auth != null", ".write": "auth != null" },
