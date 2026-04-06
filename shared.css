@@ -2,12 +2,15 @@
    Flexfundament App – Shared Styles
    ============================================ */
 
+/* --- Google Fonts: Figtree (matches flexfundament.de) --- */
+@import url('https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap');
+
 /* --- CSS Variables --- */
 :root {
-  --color-primary: #1565c0;
-  --color-primary-dark: #0d47a1;
-  --color-primary-light: #42a5f5;
-  --color-accent: #ff8f00;
+  --color-primary: #005A9C;
+  --color-primary-dark: #004880;
+  --color-primary-light: #3a8fcc;
+  --color-accent: #FF7F00;
   --color-bg: #f5f7fa;
   --color-surface: #ffffff;
   --color-text: #212121;
@@ -48,7 +51,7 @@ html {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: 'Figtree', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   background: var(--color-bg);
   color: var(--color-text);
   line-height: 1.5;
@@ -449,7 +452,7 @@ a {
 .badge-entwurf,
 .badge-offen {
   background: var(--color-warning-bg);
-  color: #f57f17;
+  color: var(--color-accent);
 }
 
 .badge-abgeschlossen,
@@ -624,6 +627,12 @@ a {
   font-weight: 700;
   color: var(--color-primary);
   margin-bottom: var(--spacing-sm);
+}
+
+.login-logo-img {
+  height: 56px;
+  width: auto;
+  margin-bottom: var(--spacing-md);
 }
 
 .login-subtitle {
