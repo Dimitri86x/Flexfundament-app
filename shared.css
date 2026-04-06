@@ -127,7 +127,7 @@ a {
 
 .nav-more-menu {
   display: none;
-  position: absolute;
+  position: fixed;
   top: var(--nav-height);
   right: 0;
   background: var(--color-surface);
