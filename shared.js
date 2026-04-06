@@ -33,6 +33,10 @@ auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(function(err) {
   console.warn('setPersistence error:', err);
 });
 
+// --- User Role (set by _registerAndLoadUser, available to all pages) ---
+var currentUserRole    = 'worker'; // safe default until DB confirms
+var currentUserProfile = null;
+
 // --- Auth ---
 
 /**
@@ -183,22 +187,25 @@ function _initProtectedPage(callback) {
       return;
     }
     console.log('[Auth] Authenticated:', user.email);
-    if (callback) callback(user);
 
-    // Process any files queued while offline in a previous session.
-    // Runs after auth so Firebase Storage rules can be satisfied.
-    if (isOnline) processPendingUploads();
+    // Load user profile + role before handing off to the page.
+    // Works offline via localStorage cache.
+    _registerAndLoadUser(user).then(function() {
+      console.log('[Auth] Role resolved:', currentUserRole);
+      if (callback) callback(user);
 
-    // Watch for sign-out during the session — but NOT when offline,
-    // because Firebase Auth may emit null while the network is unavailable
-    // even though the user's LOCAL_PERSISTENCE token is still valid.
-    auth.onAuthStateChanged(function(u) {
-      if (!u && isOnline) {
-        console.log('[Auth] Signed out during session, redirecting to login');
-        window.location.href = 'index.html';
-      } else if (!u) {
-        console.log('[Auth] Auth state null while offline — keeping session');
-      }
+      // Process any files queued while offline in a previous session.
+      if (isOnline) processPendingUploads();
+
+      // Watch for sign-out — skip when offline to avoid false redirects.
+      auth.onAuthStateChanged(function(u) {
+        if (!u && isOnline) {
+          console.log('[Auth] Signed out during session, redirecting to login');
+          window.location.href = 'index.html';
+        } else if (!u) {
+          console.log('[Auth] Auth state null while offline — keeping session');
+        }
+      });
     });
   }
 
@@ -218,6 +225,69 @@ function _initProtectedPage(callback) {
       onResolved(user);
     });
   }
+}
+
+/**
+ * Register or update the current user in /users/{uid} and load their role
+ * into the global `currentUserRole`. Falls back to a localStorage cache
+ * so the role is available immediately on subsequent offline loads.
+ *
+ * Rules:
+ *  - New users always get role: 'worker' (admin must upgrade manually)
+ *  - Existing users: role is NEVER overwritten here (only admin can change it)
+ *  - Fields updated on every login: displayName, email, lastSeen
+ */
+function _registerAndLoadUser(user) {
+  var cacheKey = 'ff_userprofile_' + user.uid;
+
+  // Apply cached profile immediately so role is available even before DB responds
+  try {
+    var cached = localStorage.getItem(cacheKey);
+    if (cached) {
+      var c = JSON.parse(cached);
+      currentUserRole    = c.role    || 'worker';
+      currentUserProfile = c;
+    }
+  } catch(e) {}
+
+  if (!isOnline) return Promise.resolve();
+
+  var ref = db.ref('users/' + user.uid);
+
+  return ref.once('value').then(function(snap) {
+    var existing = snap.val();
+    var now = Date.now();
+
+    if (existing) {
+      // User already registered — update presence fields only, never touch role
+      var updates = {
+        displayName: user.displayName || existing.displayName || '',
+        email:       user.email       || existing.email       || '',
+        lastSeen:    now
+      };
+      currentUserRole    = existing.role || 'worker';
+      currentUserProfile = Object.assign({}, existing, updates);
+      try { localStorage.setItem(cacheKey, JSON.stringify(currentUserProfile)); } catch(e) {}
+      return ref.update(updates);
+    } else {
+      // First ever login — create profile with safe default role
+      var profile = {
+        uid:         user.uid,
+        email:       user.email       || '',
+        displayName: user.displayName || '',
+        role:        'worker',
+        active:      true,
+        createdAt:   now,
+        lastSeen:    now
+      };
+      currentUserRole    = 'worker';
+      currentUserProfile = profile;
+      try { localStorage.setItem(cacheKey, JSON.stringify(profile)); } catch(e) {}
+      return ref.set(profile);
+    }
+  }).catch(function(err) {
+    console.warn('[Auth] _registerAndLoadUser failed (keeping cached role):', err.message);
+  });
 }
 
 // --- Online/Offline Detection ---

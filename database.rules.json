@@ -1,6 +1,19 @@
 {
   "rules": {
-    ".read": "auth != null",
-    ".write": "auth != null"
+    "users": {
+      "$uid": {
+        ".read":  "auth != null",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "projectAssignments": {
+      ".read":  "auth != null",
+      ".write": "auth != null"
+    },
+    "projects":  { ".read": "auth != null", ".write": "auth != null" },
+    "reports":   { ".read": "auth != null", ".write": "auth != null" },
+    "documents": { ".read": "auth != null", ".write": "auth != null" },
+    "drives":    { ".read": "auth != null", ".write": "auth != null" },
+    "costs":     { ".read": "auth != null", ".write": "auth != null" }
   }
 }
