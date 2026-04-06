@@ -2,7 +2,7 @@
    Flexfundament App – Service Worker
    ============================================ */
 
-var CACHE_NAME = 'ff-app-v17';
+var CACHE_NAME = 'ff-app-v18';
 
 var APP_SHELL = [
   './',
@@ -80,6 +80,11 @@ self.addEventListener('activate', function(event) {
 // Fetch strategy
 self.addEventListener('fetch', function(event) {
   var url = new URL(event.request.url);
+
+  // On localhost: bypass cache entirely so local changes are always visible immediately
+  if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') {
+    return; // let the browser handle it natively
+  }
 
   // CDN scripts (Firebase SDK, jsPDF): cache-first, fall back to network
   if (CACHED_CDN_HOSTS.indexOf(url.hostname) !== -1) {
