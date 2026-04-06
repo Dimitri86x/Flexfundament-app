@@ -11,7 +11,7 @@
   --color-primary-dark: #3e8a45;
   --color-primary-light: #7cc980;
   --color-accent: #FF7F00;
-  --color-nav: #515052;
+  --color-nav: #ffffff;
   --color-bg: #f5f7fa;
   --color-surface: #ffffff;
   --color-text: #212121;
@@ -57,7 +57,7 @@ body {
   color: var(--color-text);
   line-height: 1.5;
   min-height: 100vh;
-  padding-top: var(--nav-height);
+  padding-top: calc(var(--nav-height) + env(safe-area-inset-top, 0px));
 }
 
 /* Login page has no nav */
@@ -76,13 +76,16 @@ a {
   top: 0;
   left: 0;
   right: 0;
-  height: var(--nav-height);
+  height: calc(var(--nav-height) + env(safe-area-inset-top, 0px));
+  padding-top: env(safe-area-inset-top, 0px);
   background: var(--color-nav);
   display: flex;
   align-items: center;
   z-index: 100;
-  box-shadow: var(--shadow);
-  padding: 0 var(--spacing-sm);
+  border-bottom: 1px solid var(--color-border);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  padding-left: var(--spacing-sm);
+  padding-right: var(--spacing-sm);
 }
 
 .nav-tabs {
@@ -100,7 +103,7 @@ a {
   justify-content: center;
   height: 100%;
   padding: 0 var(--spacing-md);
-  color: rgba(255,255,255,0.7);
+  color: var(--color-text-secondary);
   font-size: 0.875rem;
   font-weight: 500;
   white-space: nowrap;
@@ -116,12 +119,12 @@ a {
 
 .nav-tab:hover,
 .nav-tab:focus {
-  color: #fff;
+  color: var(--color-text);
 }
 
 .nav-tab.active {
-  color: #fff;
-  border-bottom-color: #fff;
+  color: var(--color-primary);
+  border-bottom-color: var(--color-primary);
 }
 
 /* Logo in nav */
@@ -152,10 +155,11 @@ a {
 .nav-more-menu {
   display: none;
   position: fixed;
-  top: var(--nav-height);
+  top: calc(var(--nav-height) + env(safe-area-inset-top, 0px));
   right: 0;
   background: var(--color-surface);
   border-radius: 0 0 var(--radius) var(--radius);
+  border-top: 1px solid var(--color-border);
   box-shadow: var(--shadow-lg);
   min-width: 180px;
   z-index: 110;

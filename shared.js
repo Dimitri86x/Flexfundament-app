@@ -869,7 +869,7 @@ function renderNav(activeTab) {
   logoLink.href = 'dashboard.html';
   logoLink.className = 'nav-logo';
   var logoImg = document.createElement('img');
-  logoImg.src = 'images/logo-white.webp';
+  logoImg.src = 'images/logo-black.webp';
   logoImg.alt = 'Flexfundament';
   logoLink.appendChild(logoImg);
 
