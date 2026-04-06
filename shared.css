@@ -7,14 +7,15 @@
 
 /* --- CSS Variables --- */
 :root {
-  --color-primary: #005A9C;
-  --color-primary-dark: #004880;
-  --color-primary-light: #3a8fcc;
+  --color-primary: #54b25d;
+  --color-primary-dark: #3e8a45;
+  --color-primary-light: #7cc980;
   --color-accent: #FF7F00;
+  --color-nav: #515052;
   --color-bg: #f5f7fa;
   --color-surface: #ffffff;
   --color-text: #212121;
-  --color-text-secondary: #616161;
+  --color-text-secondary: #666869;
   --color-border: #e0e0e0;
   --color-error: #d32f2f;
   --color-error-bg: #fdecea;
@@ -76,7 +77,7 @@ a {
   left: 0;
   right: 0;
   height: var(--nav-height);
-  background: var(--color-primary);
+  background: var(--color-nav);
   display: flex;
   align-items: center;
   z-index: 100;
@@ -186,7 +187,7 @@ a {
 }
 
 .btn-back:hover {
-  color: var(--color-primary-dark, #1565c0);
+  color: var(--color-primary-dark);
   text-decoration: underline;
 }
 
@@ -360,7 +361,7 @@ a {
 .form-textarea:focus {
   outline: none;
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 2px rgba(21,101,192,0.15);
+  box-shadow: 0 0 0 2px rgba(84,178,93,0.2);
 }
 
 .form-textarea {
@@ -699,7 +700,7 @@ a {
 }
 
 .cal-nav-btn:hover  { background: var(--color-border); }
-.cal-nav-btn:active { background: rgba(21,101,192,0.15); }
+.cal-nav-btn:active { background: rgba(84,178,93,0.18); }
 
 .cal-month-title {
   font-size: 1.1rem;
@@ -747,7 +748,7 @@ a {
 }
 
 .cal-day:hover  { background: var(--color-bg); }
-.cal-day:active { background: rgba(21,101,192,0.15); }
+.cal-day:active { background: rgba(84,178,93,0.18); }
 
 .cal-day-num {
   font-size: 0.85rem;
@@ -768,7 +769,7 @@ a {
 }
 
 .cal-day-selected {
-  background: rgba(21,101,192,0.1);
+  background: rgba(84,178,93,0.12);
 }
 
 .cal-dots {
@@ -817,7 +818,7 @@ a {
 
 .cal-detail-row:last-child  { border-bottom: none; }
 .cal-detail-row:hover       { background: var(--color-bg); }
-.cal-detail-row:active      { background: rgba(21,101,192,0.06); }
+.cal-detail-row:active      { background: rgba(84,178,93,0.08); }
 
 .cal-row-project { border-left-color: var(--color-primary); }
 .cal-row-report  { border-left-color: #9e9e9e; }
