@@ -49,7 +49,7 @@ function isLoginPage() {
   if (path.endsWith('/index.html')) return true;
   if (path.endsWith('/')) return true;
   // No file extension and no other known page = assume login
-  var knownPages = ['dashboard', 'projects', 'reports', 'documents', 'drives', 'costs', 'calendar'];
+  var knownPages = ['dashboard', 'projects', 'reports', 'documents', 'drives', 'costs', 'calendar', 'admin'];
   for (var i = 0; i < knownPages.length; i++) {
     if (path.indexOf(knownPages[i]) !== -1) return false;
   }
@@ -265,6 +265,13 @@ function _registerAndLoadUser(user) {
         email:       user.email       || existing.email       || '',
         lastSeen:    now
       };
+      // Deactivated users are signed out immediately
+      if (existing.active === false) {
+        console.warn('[Auth] User is deactivated — signing out');
+        return auth.signOut().then(function() {
+          window.location.href = 'index.html';
+        });
+      }
       currentUserRole    = existing.role || 'worker';
       currentUserProfile = Object.assign({}, existing, updates);
       try { localStorage.setItem(cacheKey, JSON.stringify(currentUserProfile)); } catch(e) {}
@@ -867,7 +874,7 @@ function compressWithCanvas(img, maxWidth, maxBytes, done) {
 // --- Navigation ---
 
 function renderNav(activeTab) {
-  var moreItems = ['reports', 'drives', 'costs', 'documents'];
+  var moreItems = ['reports', 'drives', 'costs', 'documents', 'admin'];
   var isMoreActive = moreItems.indexOf(activeTab) !== -1;
 
   var nav = document.createElement('nav');
@@ -915,6 +922,9 @@ function renderNav(activeTab) {
     { id: 'costs', label: 'Kosten', href: 'costs.html' },
     { id: 'documents', label: 'Dokumente', href: 'documents.html' }
   ];
+  if (currentUserRole === 'admin') {
+    moreLinks.push({ id: 'admin', label: '⚙ Admin', href: 'admin.html' });
+  }
 
   moreLinks.forEach(function(link) {
     var a = document.createElement('a');

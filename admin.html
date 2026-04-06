@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Admin – Flexfundament</title>
+  <link rel="stylesheet" href="shared.css">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#515052">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <style>
+    .admin-user-card { margin-bottom: var(--spacing-md); }
+    .admin-user-header { display: flex; flex-direction: column; gap: 2px; margin-bottom: var(--spacing-sm); }
+    .admin-user-name { font-weight: 600; font-size: .95rem; }
+    .admin-user-email { font-size: .8rem; color: var(--color-text-secondary); }
+    .admin-actions { display: flex; gap: var(--spacing-sm); flex-wrap: wrap; }
+    .admin-actions .btn { font-size: .8rem; min-height: 36px; padding: 4px 12px; }
+    .admin-project-list { margin-top: var(--spacing-sm); border-top: 1px solid var(--color-border); padding-top: var(--spacing-sm); }
+    .admin-project-row { display: flex; align-items: center; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid var(--color-border); gap: var(--spacing-sm); }
+    .admin-project-row:last-child { border-bottom: none; }
+    .admin-project-name { font-size: .875rem; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .btn-assign { font-size: .75rem; min-height: 30px; padding: 3px 10px; flex-shrink: 0; }
+    .btn-deactivated { color: var(--color-error) !important; border-color: var(--color-error) !important; }
+  </style>
+</head>
+<body>
+
+  <div class="page" id="page">
+    <div class="section-title" style="margin-top:0;">Benutzerverwaltung</div>
+    <div id="userList">
+      <div class="card"><p class="list-empty">Lade Benutzer…</p></div>
+    </div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
+  <script src="shared.js"></script>
+  <script>
+
+    var allUsers       = {};   // uid → profile
+    var allAssignments = {};   // projectId → { assignedTo: {uid: true} }
+    var allProjects    = [];   // getActiveItems('projects')
+    var expandedUid    = null; // which user's project list is open
+
+    initApp(function() {
+      if (currentUserRole !== 'admin') {
+        window.location.href = 'dashboard.html';
+        return;
+      }
+      renderNav('admin');
+
+      if (!isOnline) {
+        document.getElementById('userList').innerHTML =
+          '<div class="card"><p class="list-empty" style="padding:var(--spacing-lg);">' +
+          'Benutzerverwaltung benötigt eine Online-Verbindung.</p></div>';
+        return;
+      }
+      loadData();
+    });
+
+    // ---------------------------------------------------------------
+    // Data loading
+    // ---------------------------------------------------------------
+    function loadData() {
+      Promise.all([
+        db.ref('users').once('value'),
+        db.ref('projectAssignments').once('value'),
+        syncWithFirebase('projects')
+      ]).then(function(results) {
+        allUsers       = results[0].val() || {};
+        allAssignments = results[1].val() || {};
+        allProjects    = getActiveItems('projects');
+        renderUsers();
+      }).catch(function(err) {
+        document.getElementById('userList').innerHTML =
+          '<div class="card"><p class="list-empty" style="padding:var(--spacing-lg);">Fehler beim Laden: ' + esc(err.message) + '</p></div>';
+      });
+    }
+
+    // ---------------------------------------------------------------
+    // Render
+    // ---------------------------------------------------------------
+    function renderUsers() {
+      var uids = Object.keys(allUsers);
+      var myUid = firebase.auth().currentUser.uid;
+
+      if (uids.length === 0) {
+        document.getElementById('userList').innerHTML =
+          '<div class="card"><p class="list-empty" style="padding:var(--spacing-lg);">Keine Benutzer gefunden.</p></div>';
+        return;
+      }
+
+      // Sort: admins first, then by displayName
+      uids.sort(function(a, b) {
+        var ra = allUsers[a].role === 'admin' ? 0 : 1;
+        var rb = allUsers[b].role === 'admin' ? 0 : 1;
+        if (ra !== rb) return ra - rb;
+        return (allUsers[a].displayName || '').localeCompare(allUsers[b].displayName || '');
+      });
+
+      var html = uids.map(function(uid) {
+        var u       = allUsers[uid];
+        var isAdmin = u.role === 'admin';
+        var active  = u.active !== false;
+        var isMe    = uid === myUid;
+
+        var assignedCount = allProjects.filter(function(p) {
+          return allAssignments[p.id] &&
+                 allAssignments[p.id].assignedTo &&
+                 allAssignments[p.id].assignedTo[uid];
+        }).length;
+
+        var projectsOpen = expandedUid === uid;
+
+        return (
+          '<div class="card admin-user-card" id="ucard-' + uid + '">' +
+            '<div class="admin-user-header">' +
+              '<span class="admin-user-name">' + esc(u.displayName || '–') +
+                (isMe ? ' <span style="font-size:.75rem;color:var(--color-text-secondary);">(ich)</span>' : '') +
+              '</span>' +
+              '<span class="admin-user-email">' + esc(u.email || '') + '</span>' +
+            '</div>' +
+
+            '<div class="admin-actions">' +
+              '<button onclick="toggleRole(\'' + uid + '\')" class="btn btn-secondary">' +
+                'Rolle: <strong>' + (isAdmin ? 'Admin' : 'Mitarbeiter') + '</strong>' +
+              '</button>' +
+              '<button onclick="toggleActive(\'' + uid + '\')" class="btn btn-secondary' + (!active ? ' btn-deactivated' : '') + '">' +
+                (active ? '✓ Aktiv' : '✗ Gesperrt') +
+              '</button>' +
+            '</div>' +
+
+            '<button onclick="toggleProjectPanel(\'' + uid + '\')" ' +
+              'class="btn btn-secondary" ' +
+              'style="width:100%;margin-top:var(--spacing-sm);text-align:left;justify-content:space-between;">' +
+              '<span>Projekte (' + assignedCount + ' zugewiesen)</span>' +
+              '<span>' + (projectsOpen ? '▴' : '▾') + '</span>' +
+            '</button>' +
+
+            (projectsOpen
+              ? '<div class="admin-project-list">' + renderProjectList(uid) + '</div>'
+              : '') +
+          '</div>'
+        );
+      }).join('');
+
+      document.getElementById('userList').innerHTML = html;
+    }
+
+    function renderProjectList(uid) {
+      if (allProjects.length === 0) {
+        return '<p class="list-empty" style="padding:var(--spacing-sm) 0;font-size:.85rem;">Keine Projekte vorhanden.</p>';
+      }
+      return allProjects.map(function(p) {
+        var assigned = !!(
+          allAssignments[p.id] &&
+          allAssignments[p.id].assignedTo &&
+          allAssignments[p.id].assignedTo[uid]
+        );
+        return (
+          '<div class="admin-project-row">' +
+            '<span class="admin-project-name">' + esc(p.name || 'Projekt') + '</span>' +
+            '<button onclick="toggleAssignment(\'' + p.id + '\',\'' + uid + '\',' + assigned + ')" ' +
+              'class="btn btn-assign ' + (assigned ? 'btn-primary' : 'btn-secondary') + '">' +
+              (assigned ? 'Zugewiesen ✓' : 'Zuweisen') +
+            '</button>' +
+          '</div>'
+        );
+      }).join('');
+    }
+
+    // ---------------------------------------------------------------
+    // Actions
+    // ---------------------------------------------------------------
+    function toggleProjectPanel(uid) {
+      expandedUid = expandedUid === uid ? null : uid;
+      renderUsers();
+    }
+
+    function toggleRole(uid) {
+      var u = allUsers[uid];
+      if (!u) return;
+      var myUid   = firebase.auth().currentUser.uid;
+      var newRole = u.role === 'admin' ? 'worker' : 'admin';
+
+      if (uid === myUid && newRole === 'worker') {
+        showToast('Du kannst dich nicht selbst zum Mitarbeiter herabstufen.', 'error');
+        return;
+      }
+      db.ref('users/' + uid).update({ role: newRole }).then(function() {
+        allUsers[uid].role = newRole;
+        // Keep local cache in sync so the changed user sees their new role on next load
+        try {
+          var k = 'ff_userprofile_' + uid;
+          var c = JSON.parse(localStorage.getItem(k) || '{}');
+          c.role = newRole;
+          localStorage.setItem(k, JSON.stringify(c));
+        } catch(e) {}
+        renderUsers();
+        showToast('Rolle gespeichert.', 'success');
+      }).catch(function(err) {
+        showToast('Fehler: ' + err.message, 'error');
+      });
+    }
+
+    function toggleActive(uid) {
+      var u     = allUsers[uid];
+      var myUid = firebase.auth().currentUser.uid;
+      if (!u || uid === myUid) {
+        showToast('Du kannst dich nicht selbst sperren.', 'error');
+        return;
+      }
+      var newActive = u.active === false;   // toggle: false→true, true/undefined→false
+      db.ref('users/' + uid).update({ active: newActive }).then(function() {
+        allUsers[uid].active = newActive;
+        renderUsers();
+        showToast(newActive ? 'Benutzer aktiviert.' : 'Benutzer gesperrt.', newActive ? 'success' : 'warning');
+      }).catch(function(err) {
+        showToast('Fehler: ' + err.message, 'error');
+      });
+    }
+
+    function toggleAssignment(projectId, uid, currentlyAssigned) {
+      var adminUid = firebase.auth().currentUser.uid;
+
+      if (currentlyAssigned) {
+        db.ref('projectAssignments/' + projectId + '/assignedTo/' + uid).remove().then(function() {
+          if (allAssignments[projectId] && allAssignments[projectId].assignedTo) {
+            delete allAssignments[projectId].assignedTo[uid];
+          }
+          renderUsers();
+          showToast('Zuweisung entfernt.', 'success');
+        }).catch(function(err) {
+          showToast('Fehler: ' + err.message, 'error');
+        });
+      } else {
+        var updates = {};
+        updates['projectAssignments/' + projectId + '/assignedTo/' + uid] = true;
+        updates['projectAssignments/' + projectId + '/assignedAt']         = Date.now();
+        updates['projectAssignments/' + projectId + '/assignedBy']         = adminUid;
+        db.ref().update(updates).then(function() {
+          if (!allAssignments[projectId]) allAssignments[projectId] = {};
+          if (!allAssignments[projectId].assignedTo) allAssignments[projectId].assignedTo = {};
+          allAssignments[projectId].assignedTo[uid] = true;
+          renderUsers();
+          showToast('Projekt zugewiesen.', 'success');
+        }).catch(function(err) {
+          showToast('Fehler: ' + err.message, 'error');
+        });
+      }
+    }
+
+    function esc(str) {
+      var d = document.createElement('div');
+      d.textContent = str || '';
+      return d.innerHTML;
+    }
+
+  </script>
+</body>
+</html>
