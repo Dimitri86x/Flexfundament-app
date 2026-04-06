@@ -12,30 +12,254 @@
 </head>
 <body>
 
-  <div class="page" id="page" style="display:none;">
-    <h2 style="font-size:1.1rem;font-weight:600;margin-bottom:var(--spacing-md);">Kalender</h2>
-    <div class="card" style="text-align:center;padding:var(--spacing-xl) var(--spacing-md);">
-      <div style="font-size:2rem;margin-bottom:var(--spacing-md);">&#128197;</div>
-      <div style="font-weight:600;margin-bottom:var(--spacing-sm);">Kalender wird vorbereitet</div>
-      <p class="text-secondary" style="font-size:0.9rem;margin-bottom:var(--spacing-lg);">
-        Die Kalenderansicht ist noch nicht implementiert.<br>
-        Termine sind über das Dashboard einsehbar.
-      </p>
-      <a href="dashboard.html" class="btn btn-primary">Zum Dashboard</a>
+  <div class="page" id="page">
+
+    <!-- Month navigation -->
+    <div class="cal-header">
+      <button class="cal-nav-btn" id="btnPrev">&#8249;</button>
+      <span class="cal-month-title" id="calMonthTitle"></span>
+      <button class="cal-nav-btn" id="btnNext">&#8250;</button>
     </div>
+
+    <!-- Calendar grid -->
+    <div class="card cal-card">
+      <table class="cal-table" id="calGrid"></table>
+    </div>
+
+    <!-- Legend -->
+    <div class="cal-legend">
+      <span class="cal-legend-item">
+        <span class="cal-dot cal-dot-project"></span> Projekt
+      </span>
+      <span class="cal-legend-item">
+        <span class="cal-dot cal-dot-report"></span> Bericht
+      </span>
+    </div>
+
+    <!-- Day detail panel (shown on tap) -->
+    <div id="calDetail"></div>
+
   </div>
 
-  <!-- Firebase SDK (compat v10.12.0) -->
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
   <script src="shared.js"></script>
   <script>
-    initApp(function(user) {
+
+    var currentYear, currentMonth, selectedDate = null;
+    var projectMap = {};  // 'YYYY-MM-DD' → [project, ...]
+    var reportMap  = {};  // 'YYYY-MM-DD' → [report, ...]
+
+    initApp(function() {
       renderNav('calendar');
-      document.getElementById('page').style.display = '';
+
+      var now = new Date();
+      currentYear  = now.getFullYear();
+      currentMonth = now.getMonth();
+
+      document.getElementById('btnPrev').addEventListener('click', function() {
+        currentMonth--;
+        if (currentMonth < 0) { currentMonth = 11; currentYear--; }
+        render();
+      });
+      document.getElementById('btnNext').addEventListener('click', function() {
+        currentMonth++;
+        if (currentMonth > 11) { currentMonth = 0; currentYear++; }
+        render();
+      });
+
+      loadAndRender();
     });
+
+    // ---------------------------------------------------------------
+    // Data loading
+    // ---------------------------------------------------------------
+    function loadAndRender() {
+      if (isOnline) {
+        Promise.all([
+          syncWithFirebase('projects'),
+          syncWithFirebase('reports')
+        ]).then(buildMapsAndRender);
+      } else {
+        buildMapsAndRender();
+      }
+    }
+
+    function buildMapsAndRender() {
+      projectMap = {};
+      reportMap  = {};
+
+      getActiveItems('projects').forEach(function(p) {
+        var d = p.executionDate;
+        if (!d) return;
+        if (!projectMap[d]) projectMap[d] = [];
+        projectMap[d].push(p);
+      });
+
+      getActiveItems('reports').forEach(function(r) {
+        var d = r.date;
+        if (!d) return;
+        if (!reportMap[d]) reportMap[d] = [];
+        reportMap[d].push(r);
+      });
+
+      render();
+    }
+
+    // ---------------------------------------------------------------
+    // Render month grid
+    // ---------------------------------------------------------------
+    var MONTHS   = ['Januar','Februar','März','April','Mai','Juni',
+                    'Juli','August','September','Oktober','November','Dezember'];
+    var WEEKDAYS = ['Mo','Di','Mi','Do','Fr','Sa','So'];
+
+    function render() {
+      var todayStr = new Date().toISOString().split('T')[0];
+
+      document.getElementById('calMonthTitle').textContent =
+        MONTHS[currentMonth] + ' ' + currentYear;
+
+      var firstDay   = new Date(currentYear, currentMonth, 1).getDay(); // 0=Sun
+      var daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+      var startOffset = (firstDay + 6) % 7; // Mon=0 … Sun=6
+
+      // Header row
+      var html = '<thead><tr>';
+      WEEKDAYS.forEach(function(d) {
+        html += '<th class="cal-th">' + d + '</th>';
+      });
+      html += '</tr></thead><tbody><tr>';
+
+      // Empty cells before first day
+      for (var e = 0; e < startOffset; e++) html += '<td></td>';
+
+      for (var day = 1; day <= daysInMonth; day++) {
+        var dateStr = currentYear + '-' +
+          String(currentMonth + 1).padStart(2,'0') + '-' +
+          String(day).padStart(2,'0');
+
+        var isToday    = dateStr === todayStr;
+        var isSelected = dateStr === selectedDate;
+        var hasProject = !!projectMap[dateStr];
+        var hasReport  = !!reportMap[dateStr];
+
+        var cellClass = 'cal-day';
+        if (isToday)    cellClass += ' cal-day-today';
+        if (isSelected) cellClass += ' cal-day-selected';
+
+        var dots = '';
+        if (hasProject) dots += '<span class="cal-dot cal-dot-project"></span>';
+        if (hasReport)  dots += '<span class="cal-dot cal-dot-report"></span>';
+
+        html += '<td><div class="' + cellClass + '" data-date="' + dateStr + '">' +
+          '<span class="cal-day-num">' + day + '</span>' +
+          (dots ? '<div class="cal-dots">' + dots + '</div>' : '') +
+          '</div></td>';
+
+        // New row after Sunday (every 7 cells after offset)
+        if ((startOffset + day) % 7 === 0 && day < daysInMonth) {
+          html += '</tr><tr>';
+        }
+      }
+
+      // Fill remaining cells
+      var filled = (startOffset + daysInMonth) % 7;
+      if (filled > 0) {
+        for (var r = filled; r < 7; r++) html += '<td></td>';
+      }
+      html += '</tr></tbody>';
+
+      document.getElementById('calGrid').innerHTML = html;
+
+      // Click handlers
+      document.getElementById('calGrid').querySelectorAll('[data-date]').forEach(function(cell) {
+        cell.addEventListener('click', function() {
+          var d = cell.getAttribute('data-date');
+          if (d === selectedDate) {
+            // Deselect
+            selectedDate = null;
+            cell.classList.remove('cal-day-selected');
+            document.getElementById('calDetail').innerHTML = '';
+          } else {
+            selectedDate = d;
+            render();          // re-render to move selection highlight
+            showDetail(d);
+          }
+        });
+      });
+
+      // Restore detail if a date is selected
+      if (selectedDate) showDetail(selectedDate);
+    }
+
+    // ---------------------------------------------------------------
+    // Day detail panel
+    // ---------------------------------------------------------------
+    function showDetail(dateStr) {
+      var projects = projectMap[dateStr] || [];
+      var reports  = reportMap[dateStr]  || [];
+
+      if (projects.length === 0 && reports.length === 0) {
+        document.getElementById('calDetail').innerHTML =
+          '<div class="section-title">' + formatDate(dateStr) + '</div>' +
+          '<div class="card"><p class="list-empty" style="padding:var(--spacing-lg);">Keine Einträge</p></div>';
+        return;
+      }
+
+      var html = '<div class="section-title">' + formatDate(dateStr) + '</div>';
+
+      if (projects.length > 0) {
+        html += projects.map(function(p) {
+          var addr = [p.street, p.city].filter(Boolean).join(', ');
+          var badgeClass = p.status === 'abgeschlossen' ? 'badge-abgeschlossen' : 'badge-aktiv';
+          return '<a href="projects.html?id=' + p.id + '" class="cal-detail-row">' +
+            '<div class="cal-detail-icon cal-dot-project-bg">&#128204;</div>' +
+            '<div class="cal-detail-body">' +
+              '<div class="cal-detail-title">' + esc(p.name || 'Projekt') + '</div>' +
+              (p.executionTime ? '<div class="cal-detail-sub">' + formatTime(p.executionTime) + ' Uhr</div>' : '') +
+              (addr ? '<div class="cal-detail-sub">' + esc(addr) + '</div>' : '') +
+              '<span class="badge ' + badgeClass + '" style="margin-top:4px;display:inline-block;">' +
+                (p.status || 'aktiv') + '</span>' +
+            '</div>' +
+            '<div class="cal-detail-arrow">&#8250;</div>' +
+          '</a>';
+        }).join('');
+      }
+
+      if (reports.length > 0) {
+        html += reports.map(function(r) {
+          var workers = (r.workers || []).join(', ');
+          var badgeClass = r.status === 'abgeschlossen' ? 'badge-abgeschlossen' : 'badge-entwurf';
+          return '<a href="reports.html?id=' + r.id + '" class="cal-detail-row">' +
+            '<div class="cal-detail-icon cal-dot-report-bg">&#128203;</div>' +
+            '<div class="cal-detail-body">' +
+              '<div class="cal-detail-title">' + esc(r.projectName || 'Einsatzbericht') + '</div>' +
+              (workers ? '<div class="cal-detail-sub">' + esc(workers) + '</div>' : '') +
+              '<span class="badge ' + badgeClass + '" style="margin-top:4px;display:inline-block;">' +
+                (r.status || 'entwurf') + '</span>' +
+            '</div>' +
+            '<div class="cal-detail-arrow">&#8250;</div>' +
+          '</a>';
+        }).join('');
+      }
+
+      document.getElementById('calDetail').innerHTML = html;
+
+      // Scroll detail into view on mobile
+      setTimeout(function() {
+        var el = document.getElementById('calDetail');
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }, 50);
+    }
+
+    function esc(str) {
+      var d = document.createElement('div');
+      d.textContent = str || '';
+      return d.innerHTML;
+    }
+
   </script>
 </body>
 </html>
