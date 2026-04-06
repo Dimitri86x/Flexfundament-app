@@ -62,11 +62,15 @@
       document.getElementById('btnPrev').addEventListener('click', function() {
         currentMonth--;
         if (currentMonth < 0) { currentMonth = 11; currentYear--; }
+        selectedDate = null;
+        document.getElementById('calDetail').innerHTML = '';
         render();
       });
       document.getElementById('btnNext').addEventListener('click', function() {
         currentMonth++;
         if (currentMonth > 11) { currentMonth = 0; currentYear++; }
+        selectedDate = null;
+        document.getElementById('calDetail').innerHTML = '';
         render();
       });
 
@@ -208,7 +212,8 @@
         return;
       }
 
-      var html = '<div class="section-title">' + formatDate(dateStr) + '</div>';
+      var html = '<div class="section-title">' + formatDate(dateStr) + '</div>' +
+        '<div class="card" style="padding:0;">';
 
       if (projects.length > 0) {
         html += projects.map(function(p) {
@@ -245,6 +250,7 @@
         }).join('');
       }
 
+      html += '</div>';
       document.getElementById('calDetail').innerHTML = html;
 
       // Scroll detail into view on mobile

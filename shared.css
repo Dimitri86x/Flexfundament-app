@@ -734,6 +734,10 @@ a {
   background: var(--color-bg);
 }
 
+.cal-day:active {
+  background: rgba(21,101,192,0.15);
+}
+
 .cal-day-num {
   font-size: 0.9rem;
   line-height: 1.4;
