@@ -281,20 +281,38 @@ function _registerAndLoadUser(user) {
       try { localStorage.setItem(cacheKey, JSON.stringify(currentUserProfile)); } catch(e) {}
       return ref.update(updates);
     } else {
-      // First ever login — create profile with safe default role
-      var profile = {
-        uid:         user.uid,
-        email:       user.email       || '',
-        displayName: user.displayName || '',
-        role:        'worker',
-        active:      true,
-        createdAt:   now,
-        lastSeen:    now
-      };
-      currentUserRole    = 'worker';
-      currentUserProfile = profile;
-      try { localStorage.setItem(cacheKey, JSON.stringify(profile)); } catch(e) {}
-      return ref.set(profile);
+      // First ever login — check for pre-provisioned account by email
+      var emailKey = (user.email || '').toLowerCase().replace(/[^a-z0-9]/g, '_');
+      return db.ref('pendingUsers/' + emailKey).once('value').then(function(pendingSnap) {
+        var pending = pendingSnap.val();
+        var profile = {
+          uid:         user.uid,
+          email:       user.email       || '',
+          displayName: user.displayName || (pending && pending.displayName) || '',
+          role:        (pending && pending.role)   || 'worker',
+          active:      (pending && pending.active  !== undefined) ? pending.active : true,
+          createdAt:   now,
+          lastSeen:    now
+        };
+        currentUserRole    = profile.role;
+        currentUserProfile = profile;
+        try { localStorage.setItem(cacheKey, JSON.stringify(profile)); } catch(e) {}
+        var writes = [ref.set(profile)];
+        if (pending) {
+          // Migrate project assignments from pending record to real UID
+          var assignedProjectIds = pending.assignedProjectIds || {};
+          var projectKeys = Object.keys(assignedProjectIds);
+          if (projectKeys.length > 0) {
+            var assignUpdates = {};
+            projectKeys.forEach(function(projectId) {
+              assignUpdates['projectAssignments/' + projectId + '/assignedTo/' + user.uid] = true;
+            });
+            writes.push(db.ref().update(assignUpdates));
+          }
+          writes.push(db.ref('pendingUsers/' + emailKey).remove());
+        }
+        return Promise.all(writes);
+      });
     }
   }).catch(function(err) {
     console.warn('[Auth] _registerAndLoadUser failed (keeping cached role):', err.message);

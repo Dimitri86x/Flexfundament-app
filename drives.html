@@ -167,7 +167,7 @@
     });
 
     function populateDropdowns() {
-      var projects = getActiveItems('projects');
+      var projects = filterProjectsByAccess(getActiveItems('projects'));
       var opts = projects.map(function(p) {
         return '<option value="' + p.id + '">' + esc(p.name || 'Ohne Bezeichnung') + '</option>';
       }).join('');
@@ -188,7 +188,7 @@
     }
 
     function renderList() {
-      var drives = getActiveItems('drives');
+      var drives = getActiveItems('drives').filter(function(d) { return canAccessProject(d.projectId); });
       var projFilter = document.getElementById('filterProject').value;
 
       var filtered = drives.filter(function(d) {

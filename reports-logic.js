@@ -44,7 +44,7 @@ initApp(function(user) {
 // =============================================
 
 function populateProjectDropdowns() {
-  var projects = getActiveItems('projects');
+  var projects = filterProjectsByAccess(getActiveItems('projects'));
   var opts = projects.map(function(p) {
     return '<option value="' + p.id + '">' + esc(p.name || 'Ohne Bezeichnung') + '</option>';
   }).join('');
@@ -66,7 +66,7 @@ function showList() {
 }
 
 function renderList() {
-  var reports = getActiveItems('reports');
+  var reports = getActiveItems('reports').filter(function(r) { return canAccessProject(r.projectId); });
   var projFilter = document.getElementById('filterProject').value;
   var statusFilter = document.getElementById('filterStatus').value;
 

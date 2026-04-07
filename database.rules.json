@@ -4,7 +4,14 @@
       ".read": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
       "$uid": {
         ".read": "auth != null && auth.uid === $uid",
-        ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || (auth.uid === $uid && (!data.exists() ? newData.child('role').val() === 'worker' : newData.child('role').val() === data.child('role').val())))"
+        ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || (auth.uid === $uid && (!data.exists() ? newData.child('role').val() === 'worker' && newData.child('active').val() === true : newData.child('role').val() === data.child('role').val() && newData.child('active').val() === data.child('active').val())))"
+      }
+    },
+    "pendingUsers": {
+      ".read":  "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
+      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
+      "$emailKey": {
+        ".read": "auth != null"
       }
     },
     "projectAssignments": {
