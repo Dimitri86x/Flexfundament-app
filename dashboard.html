@@ -46,9 +46,6 @@
     <!-- Upcoming Appointments (today + next 7 days, hidden if none) -->
     <div id="sectionTermine"></div>
 
-    <!-- Open Reports (hidden if none) -->
-    <div id="sectionReports"></div>
-
     <!-- Open Costs (hidden if none) -->
     <div id="sectionCosts"></div>
 
@@ -78,7 +75,6 @@
       if (isOnline) {
         Promise.all([
           syncWithFirebase('projects'),
-          syncWithFirebase('reports'),
           syncWithFirebase('costs')
         ]).then(refreshWidgets);
       } else {
@@ -88,7 +84,6 @@
 
     function refreshWidgets() {
       renderTermineWidget();
-      renderReportsWidget();
       renderCostsWidget();
     }
 
@@ -143,26 +138,6 @@
 
       document.getElementById('sectionTermine').innerHTML =
         makeSection('Termine', rows);
-    }
-
-    function renderReportsWidget() {
-      var reports = getActiveItems('reports')
-        .filter(function(r) { return r.status === 'entwurf' && canAccessProject(r.projectId); })
-        .slice(0, 5);
-
-      if (reports.length === 0) {
-        document.getElementById('sectionReports').innerHTML = '';
-        return;
-      }
-
-      var rows = reports.map(function(r) {
-        var date = r.date ? formatDate(r.date) : '';
-        var badge = '<span class="badge badge-entwurf">Entwurf</span>';
-        return makeRow('reports.html?id=' + r.id, r.projectName || 'Einsatzbericht', date, badge);
-      }).join('');
-
-      document.getElementById('sectionReports').innerHTML =
-        makeSection('Offene Einsatzberichte', rows);
     }
 
     function renderCostsWidget() {
