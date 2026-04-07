@@ -66,7 +66,15 @@
   <!-- ========== FORM VIEW ========== -->
   <div id="formView" class="page" style="display:none;">
     <button class="btn-back" id="btnBack" type="button">&#8592; Zurueck zur Liste</button>
-    <h2 style="font-size:1.1rem;font-weight:600;margin-bottom:16px;" id="formTitle">Neues Projekt</h2>
+    <h2 style="font-size:1.1rem;font-weight:600;margin-bottom:12px;" id="formTitle">Neues Projekt</h2>
+
+    <!-- Status bar — only visible when editing an existing project -->
+    <div id="statusBar" style="display:none;align-items:center;justify-content:space-between;margin-bottom:16px;gap:12px;">
+      <span id="statusBadge" class="badge"></span>
+      <button type="button" id="statusToggleBtn" class="btn btn-secondary"
+        style="font-size:.8rem;min-height:36px;padding:4px 14px;"
+        onclick="toggleProjectStatus()"></button>
+    </div>
 
     <form id="projectForm" novalidate>
 
@@ -435,6 +443,7 @@
         document.getElementById('actionDocument').href = 'documents.html?new=1&projectId=' + id;
         document.getElementById('actionDrive').href = 'drives.html?new=1&projectId=' + id;
         document.getElementById('actionCost').href = 'costs.html?new=1&projectId=' + id;
+        updateStatusBar(p.status || 'aktiv');
       } else {
         currentId = null;
         document.getElementById('formTitle').textContent = 'Neues Projekt';
@@ -442,8 +451,36 @@
         resetForm();
         document.getElementById('btnDelete').style.display = 'none';
         document.getElementById('projectActions').style.display = 'none';
+        document.getElementById('statusBar').style.display = 'none';
       }
       window.scrollTo(0, 0);
+    }
+
+    function updateStatusBar(status) {
+      var bar    = document.getElementById('statusBar');
+      var badge  = document.getElementById('statusBadge');
+      var btn    = document.getElementById('statusToggleBtn');
+      bar.style.display = 'flex';
+      if (status === 'abgeschlossen') {
+        badge.textContent = 'abgeschlossen';
+        badge.className   = 'badge badge-abgeschlossen';
+        btn.textContent   = 'Wieder aktivieren';
+      } else {
+        badge.textContent = 'aktiv';
+        badge.className   = 'badge badge-aktiv';
+        btn.textContent   = 'Abschließen';
+      }
+    }
+
+    function toggleProjectStatus() {
+      if (!currentId) return;
+      var p = getItemById('projects', currentId);
+      if (!p) return;
+      var newStatus = (p.status || 'aktiv') === 'aktiv' ? 'abgeschlossen' : 'aktiv';
+      p.status = newStatus;
+      saveToLocal('projects', currentId, p);
+      updateStatusBar(newStatus);
+      showToast(newStatus === 'abgeschlossen' ? 'Projekt abgeschlossen.' : 'Projekt wieder aktiviert.', 'success');
     }
 
     function fillForm(p) {
