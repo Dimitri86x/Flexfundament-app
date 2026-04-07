@@ -177,6 +177,9 @@
               '<button onclick="toggleActive(\'' + uid + '\')" class="btn btn-secondary' + (!active ? ' btn-deactivated' : '') + '">' +
                 (active ? '✓ Aktiv' : '✗ Gesperrt') +
               '</button>' +
+              (!isMe
+                ? '<button onclick="deleteUser(\'' + uid + '\')" class="btn btn-secondary" style="color:var(--color-error);border-color:var(--color-error);margin-left:auto;">Löschen</button>'
+                : '') +
             '</div>' +
 
             '<button onclick="toggleProjectPanel(\'' + uid + '\')" ' +
@@ -492,6 +495,50 @@
       });
     }
 
+    function deleteUser(uid) {
+      var u     = allUsers[uid];
+      var myUid = firebase.auth().currentUser.uid;
+      if (!u || uid === myUid) {
+        showToast('Eigenes Konto kann nicht gelöscht werden.', 'error');
+        return;
+      }
+      if (!confirm('Konto von "' + (u.displayName || u.email || uid) + '" wirklich löschen?\nDiese Aktion kann nicht rückgängig gemacht werden.')) return;
+
+      var writes = [];
+
+      // Remove all project assignments for this uid
+      Object.keys(allAssignments).forEach(function(projectId) {
+        if (allAssignments[projectId] &&
+            allAssignments[projectId].assignedTo &&
+            allAssignments[projectId].assignedTo[uid]) {
+          writes.push(db.ref('projectAssignments/' + projectId + '/assignedTo/' + uid).remove());
+        }
+      });
+
+      // Delete user profile — next login attempt: no users/{uid}, no pendingUsers → _denyAccess()
+      // Also: DB rules require active === true in users/{uid}, so all Firebase reads/writes blocked
+      writes.push(db.ref('users/' + uid).remove());
+
+      Promise.all(writes).then(function() {
+        // Clean up any admin-side caches
+        try {
+          localStorage.removeItem('ff_userprofile_' + uid);
+          localStorage.removeItem('ff_assignments_' + uid);
+        } catch(e) {}
+        // Update local allAssignments mirror
+        Object.keys(allAssignments).forEach(function(projectId) {
+          if (allAssignments[projectId] && allAssignments[projectId].assignedTo) {
+            delete allAssignments[projectId].assignedTo[uid];
+          }
+        });
+        delete allUsers[uid];
+        renderUsers();
+        showToast('Konto gelöscht.', 'success');
+      }).catch(function(err) {
+        showToast('Fehler: ' + err.message, 'error');
+      });
+    }
+
     function deletePendingUser(emailKey) {
       Promise.all([
         db.ref('pendingUsers/'     + emailKey).remove(),
@@ -513,61 +560,103 @@
     }
 
     // ---------------------------------------------------------------
-    // Activity section — aggregates updatedAt/By from all collections
+    // Activity section — project-filtered view of recent changes
     // ---------------------------------------------------------------
     function renderActivitySection() {
+      // Preserve selected project across re-renders
+      var filterEl = document.getElementById('activityProjectFilter');
+      var selectedProjectId = filterEl ? filterEl.value : '';
+
       var cols = [
-        { key: 'projects',  label: 'Projekt',   nameField: 'name' },
-        { key: 'reports',   label: 'Bericht',   nameField: 'projectName' },
-        { key: 'costs',     label: 'Kosten',    nameField: 'category' },
-        { key: 'documents', label: 'Dokument',  nameField: 'name' },
-        { key: 'drives',    label: 'Fahrt',     nameField: 'projectName' }
+        { key: 'projects',  label: 'Projekt',  nameField: 'name',        projectIdField: null },
+        { key: 'reports',   label: 'Bericht',  nameField: 'projectName',  projectIdField: 'projectId' },
+        { key: 'costs',     label: 'Kosten',   nameField: 'category',     projectIdField: 'projectId' },
+        { key: 'documents', label: 'Dokument', nameField: 'name',         projectIdField: 'projectId' },
+        { key: 'drives',    label: 'Fahrt',    nameField: 'projectName',  projectIdField: 'projectId' }
       ];
 
       var entries = [];
       cols.forEach(function(col) {
         getActiveItems(col.key).forEach(function(item) {
           if (!item.updatedAt) return;
+          var itemProjectId = col.projectIdField ? (item[col.projectIdField] || '') : item.id;
+          if (selectedProjectId && itemProjectId !== selectedProjectId) return;
+
+          var itemProjectName = item.projectName || '';
+          if (!itemProjectName) {
+            if (col.key === 'projects') {
+              itemProjectName = item.name || '';
+            } else if (itemProjectId) {
+              var p = allProjects.find(function(pr) { return pr.id === itemProjectId; });
+              itemProjectName = p ? (p.name || '') : '';
+            }
+          }
+
           entries.push({
-            ts:     item.updatedAt,
-            by:     item.updatedByName || item.updatedByEmail || item.updatedByUid || '–',
-            module: col.label,
-            name:   item[col.nameField] || '–'
+            ts:          item.updatedAt,
+            by:          item.updatedByName || item.updatedByEmail || item.updatedByUid || '–',
+            module:      col.label,
+            name:        item[col.nameField] || '–',
+            projectName: itemProjectName
           });
         });
       });
 
+      entries.sort(function(a, b) { return b.ts - a.ts; });
+      entries = entries.slice(0, 20);
+
+      // Project dropdown options
+      var projectOpts = '<option value="">Alle Projekte</option>' +
+        allProjects.map(function(p) {
+          var sel = p.id === selectedProjectId ? ' selected' : '';
+          return '<option value="' + esc(p.id) + '"' + sel + '>' + esc(p.name || 'Projekt') + '</option>';
+        }).join('');
+
+      var filterHtml =
+        '<select id="activityProjectFilter" class="form-select" ' +
+          'style="margin-bottom:8px;" onchange="renderActivitySection()">' +
+          projectOpts +
+        '</select>';
+
       if (entries.length === 0) {
-        document.getElementById('sectionActivity').innerHTML = '';
+        document.getElementById('sectionActivity').innerHTML =
+          '<div class="section-title" style="margin-top:var(--spacing-lg);">Letzte Änderungen</div>' +
+          filterHtml +
+          '<div class="card"><p class="list-empty">Keine Änderungen gefunden.</p></div>';
         return;
       }
-
-      entries.sort(function(a, b) { return b.ts - a.ts; });
-      entries = entries.slice(0, 15);
 
       var rows = entries.map(function(e) {
         var d       = new Date(e.ts);
         var dateStr = d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
         var timeStr = d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+        var nameDetail = (e.module === 'Projekt' || e.name === e.projectName) ? '' : ' · ' + esc(e.name);
         return (
           '<div style="display:flex;justify-content:space-between;align-items:flex-start;' +
                 'padding:9px 0;border-bottom:1px solid var(--color-border);gap:8px;">' +
             '<div style="min-width:0;flex:1;">' +
-              '<span style="font-size:.85rem;font-weight:500;">' + esc(e.by) + '</span>' +
-              '<span style="font-size:.8rem;color:var(--color-text-secondary);display:block;' +
-                    'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' +
-                esc(e.module) + ' · ' + esc(e.name) +
-              '</span>' +
+              '<div style="font-size:.85rem;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' +
+                esc(e.by) +
+              '</div>' +
+              '<div style="font-size:.8rem;color:var(--color-text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' +
+                esc(e.module) + nameDetail +
+              '</div>' +
+              (e.projectName && !selectedProjectId
+                ? '<div style="font-size:.75rem;color:var(--color-text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' +
+                    '&#128204; ' + esc(e.projectName) +
+                  '</div>'
+                : '') +
             '</div>' +
-            '<span style="font-size:.75rem;color:var(--color-text-secondary);white-space:nowrap;flex-shrink:0;">' +
+            '<div style="font-size:.75rem;color:var(--color-text-secondary);white-space:nowrap;flex-shrink:0;text-align:right;">' +
               dateStr + '<br>' + timeStr +
-            '</span>' +
+            '</div>' +
           '</div>'
         );
       }).join('');
 
       document.getElementById('sectionActivity').innerHTML =
         '<div class="section-title" style="margin-top:var(--spacing-lg);">Letzte Änderungen</div>' +
+        filterHtml +
         '<div class="card">' + rows + '</div>';
     }
 
