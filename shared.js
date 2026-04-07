@@ -33,9 +33,10 @@ auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(function(err) {
   console.warn('setPersistence error:', err);
 });
 
-// --- User Role (set by _registerAndLoadUser, available to all pages) ---
+// --- User Role + Project Access (set during init, available to all pages) ---
 var currentUserRole    = 'worker'; // safe default until DB confirms
 var currentUserProfile = null;
+var allowedProjectIds  = {};       // plain object {projectId: true}; null = admin (full access)
 
 // --- Auth ---
 
@@ -191,7 +192,10 @@ function _initProtectedPage(callback) {
     // Load user profile + role before handing off to the page.
     // Works offline via localStorage cache.
     _registerAndLoadUser(user).then(function() {
-      console.log('[Auth] Role resolved:', currentUserRole);
+      return loadAllowedProjectIds(user);
+    }).then(function() {
+      console.log('[Auth] Role:', currentUserRole,
+        '| Projects:', allowedProjectIds === null ? 'all (admin)' : Object.keys(allowedProjectIds).length + ' assigned');
       if (callback) callback(user);
 
       // Process any files queued while offline in a previous session.
@@ -295,6 +299,58 @@ function _registerAndLoadUser(user) {
   }).catch(function(err) {
     console.warn('[Auth] _registerAndLoadUser failed (keeping cached role):', err.message);
   });
+}
+
+/**
+ * Load the set of project IDs this user is allowed to access.
+ * - Admin: sets allowedProjectIds = null  (sentinel for "all")
+ * - Worker: reads /projectAssignments, collects projectIds where assignedTo[uid] === true
+ * Uses localStorage cache so the filter works immediately on offline reload.
+ */
+function loadAllowedProjectIds(user) {
+  if (currentUserRole === 'admin') {
+    allowedProjectIds = null; // null = full access
+    return Promise.resolve();
+  }
+
+  var cacheKey = 'ff_assignments_' + user.uid;
+
+  // Apply cached value immediately (offline-safe)
+  try {
+    var cached = localStorage.getItem(cacheKey);
+    allowedProjectIds = cached ? JSON.parse(cached) : {};
+  } catch(e) {
+    allowedProjectIds = {};
+  }
+
+  if (!isOnline) return Promise.resolve();
+
+  return db.ref('projectAssignments').once('value').then(function(snap) {
+    var data    = snap.val() || {};
+    var allowed = {};
+    Object.keys(data).forEach(function(projectId) {
+      var a = data[projectId];
+      if (a && a.assignedTo && a.assignedTo[user.uid] === true) {
+        allowed[projectId] = true;
+      }
+    });
+    allowedProjectIds = allowed;
+    try { localStorage.setItem(cacheKey, JSON.stringify(allowed)); } catch(e) {}
+  }).catch(function(err) {
+    console.warn('[Auth] loadAllowedProjectIds failed (using cache):', err.message);
+  });
+}
+
+/** Returns true if the current user may access the given project. */
+function canAccessProject(projectId) {
+  if (currentUserRole === 'admin' || allowedProjectIds === null) return true;
+  return allowedProjectIds[projectId] === true;
+}
+
+/** Filters a project array down to only accessible items. */
+function filterProjectsByAccess(projects) {
+  if (currentUserRole === 'admin' || allowedProjectIds === null) return projects;
+  return projects.filter(function(p) { return allowedProjectIds[p.id] === true; });
 }
 
 // --- Online/Offline Detection ---

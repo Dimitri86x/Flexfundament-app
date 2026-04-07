@@ -329,12 +329,12 @@
     }
 
     function renderList() {
-      var projects = getActiveItems('projects');
+      var accessible = filterProjectsByAccess(getActiveItems('projects'));
       var search = document.getElementById('searchInput').value.toLowerCase().trim();
       var statusFilter = document.getElementById('filterStatus').value;
       var typeFilter = document.getElementById('filterType').value;
 
-      var filtered = projects.filter(function(p) {
+      var filtered = accessible.filter(function(p) {
         if (search && (p.name || '').toLowerCase().indexOf(search) === -1) return false;
         if (statusFilter && (p.status || 'aktiv') !== statusFilter) return false;
         if (typeFilter && p.type !== typeFilter) return false;
@@ -348,7 +348,12 @@
 
       var container = document.getElementById('projectList');
       if (filtered.length === 0) {
-        container.innerHTML = '<p class="list-empty">Keine Projekte gefunden</p>';
+        // Worker with no assigned projects → clear guidance instead of generic "nothing found"
+        var noAssignments = currentUserRole !== 'admin' && accessible.length === 0;
+        container.innerHTML = noAssignments
+          ? '<p class="list-empty">Dir wurden noch keine Projekte freigegeben.' +
+            '<br><span style="font-size:.8rem;color:var(--color-text-secondary);">Bitte wende dich an den Administrator.</span></p>'
+          : '<p class="list-empty">Keine Projekte gefunden</p>';
         return;
       }
 
@@ -397,6 +402,13 @@
     // =============================================
 
     function openForm(id) {
+      // Access guard: workers may only open projects assigned to them
+      if (id && !canAccessProject(id)) {
+        showToast('Kein Zugriff auf dieses Projekt.', 'error');
+        showList();
+        return;
+      }
+
       document.getElementById('listView').style.display = 'none';
       document.getElementById('formView').style.display = '';
       accessFiles = [];

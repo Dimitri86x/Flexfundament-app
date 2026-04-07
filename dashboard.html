@@ -120,7 +120,7 @@
       limitDate.setDate(limitDate.getDate() + 7);
       var limitStr = limitDate.toISOString().split('T')[0];
 
-      var items = getActiveItems('projects').filter(function(p) {
+      var items = filterProjectsByAccess(getActiveItems('projects')).filter(function(p) {
         return p.executionDate && p.executionDate >= todayStr && p.executionDate <= limitStr;
       }).sort(function(a, b) {
         return (a.executionDate + (a.executionTime || '')).localeCompare(b.executionDate + (b.executionTime || ''));
