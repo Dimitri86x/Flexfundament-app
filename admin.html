@@ -562,10 +562,43 @@
     // ---------------------------------------------------------------
     // Activity section — project-filtered view of recent changes
     // ---------------------------------------------------------------
+
+    // Renders the filter bar once; updates only the row list on filter changes.
     function renderActivitySection() {
-      // Preserve selected project across re-renders
-      var filterEl = document.getElementById('activityProjectFilter');
-      var selectedProjectId = filterEl ? filterEl.value : '';
+      var projectOpts = '<option value="">Alle Projekte</option>' +
+        allProjects.map(function(p) {
+          return '<option value="' + esc(p.id) + '">' + esc(p.name || 'Projekt') + '</option>';
+        }).join('');
+
+      document.getElementById('sectionActivity').innerHTML =
+        '<div class="section-title" style="margin-top:var(--spacing-lg);">Letzte Änderungen</div>' +
+        '<div style="display:flex;gap:8px;margin-bottom:8px;">' +
+          '<select id="activityProjectFilter" class="form-select" style="flex:1;" onchange="renderActivityRows()">' +
+            projectOpts +
+          '</select>' +
+          '<input type="text" id="activitySearch" class="form-input" ' +
+            'placeholder="Name, Ort, Auftraggeber…" style="flex:1;" oninput="renderActivityRows()">' +
+        '</div>' +
+        '<div id="activityRows"></div>';
+
+      renderActivityRows();
+    }
+
+    // Re-renders only the result rows — leaves filter inputs untouched (preserves focus & cursor).
+    function renderActivityRows() {
+      var selectedProjectId = (document.getElementById('activityProjectFilter') || {value: ''}).value || '';
+      var searchText = ((document.getElementById('activitySearch') || {value: ''}).value || '').toLowerCase().trim();
+
+      // Build set of project IDs matching free-text search
+      var matchingProjectIds = null;
+      if (searchText) {
+        matchingProjectIds = {};
+        allProjects.forEach(function(p) {
+          var hay = [p.name, p.client, p.contact, p.city]
+            .map(function(v) { return (v || '').toLowerCase(); }).join(' ');
+          if (hay.indexOf(searchText) !== -1) matchingProjectIds[p.id] = true;
+        });
+      }
 
       var cols = [
         { key: 'projects',  label: 'Projekt',  nameField: 'name',        projectIdField: null },
@@ -581,6 +614,7 @@
           if (!item.updatedAt) return;
           var itemProjectId = col.projectIdField ? (item[col.projectIdField] || '') : item.id;
           if (selectedProjectId && itemProjectId !== selectedProjectId) return;
+          if (matchingProjectIds && !matchingProjectIds[itemProjectId]) return;
 
           var itemProjectName = item.projectName || '';
           if (!itemProjectName) {
@@ -605,24 +639,11 @@
       entries.sort(function(a, b) { return b.ts - a.ts; });
       entries = entries.slice(0, 20);
 
-      // Project dropdown options
-      var projectOpts = '<option value="">Alle Projekte</option>' +
-        allProjects.map(function(p) {
-          var sel = p.id === selectedProjectId ? ' selected' : '';
-          return '<option value="' + esc(p.id) + '"' + sel + '>' + esc(p.name || 'Projekt') + '</option>';
-        }).join('');
-
-      var filterHtml =
-        '<select id="activityProjectFilter" class="form-select" ' +
-          'style="margin-bottom:8px;" onchange="renderActivitySection()">' +
-          projectOpts +
-        '</select>';
+      var rowsEl = document.getElementById('activityRows');
+      if (!rowsEl) return;
 
       if (entries.length === 0) {
-        document.getElementById('sectionActivity').innerHTML =
-          '<div class="section-title" style="margin-top:var(--spacing-lg);">Letzte Änderungen</div>' +
-          filterHtml +
-          '<div class="card"><p class="list-empty">Keine Änderungen gefunden.</p></div>';
+        rowsEl.innerHTML = '<div class="card"><p class="list-empty">Keine Änderungen gefunden.</p></div>';
         return;
       }
 
@@ -654,10 +675,7 @@
         );
       }).join('');
 
-      document.getElementById('sectionActivity').innerHTML =
-        '<div class="section-title" style="margin-top:var(--spacing-lg);">Letzte Änderungen</div>' +
-        filterHtml +
-        '<div class="card">' + rows + '</div>';
+      rowsEl.innerHTML = '<div class="card">' + rows + '</div>';
     }
 
   </script>

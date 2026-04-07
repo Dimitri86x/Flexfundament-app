@@ -335,7 +335,10 @@
       var typeFilter = document.getElementById('filterType').value;
 
       var filtered = accessible.filter(function(p) {
-        if (search && (p.name || '').toLowerCase().indexOf(search) === -1) return false;
+        if (search) {
+          var hay = [p.name, p.client, p.contact, p.city].map(function(v) { return (v || '').toLowerCase(); }).join(' ');
+          if (hay.indexOf(search) === -1) return false;
+        }
         if (statusFilter && (p.status || 'aktiv') !== statusFilter) return false;
         if (typeFilter && p.type !== typeFilter) return false;
         return true;
