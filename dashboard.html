@@ -147,7 +147,7 @@
 
     function renderReportsWidget() {
       var reports = getActiveItems('reports')
-        .filter(function(r) { return r.status === 'entwurf'; })
+        .filter(function(r) { return r.status === 'entwurf' && canAccessProject(r.projectId); })
         .slice(0, 5);
 
       if (reports.length === 0) {
@@ -166,7 +166,7 @@
     }
 
     function renderCostsWidget() {
-      var costs = getActiveItems('costs').filter(function(c) { return c.status !== 'bezahlt'; });
+      var costs = getActiveItems('costs').filter(function(c) { return c.status !== 'bezahlt' && canAccessProject(c.projectId); });
 
       if (costs.length === 0) {
         document.getElementById('sectionCosts').innerHTML = '';

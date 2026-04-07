@@ -95,14 +95,14 @@
       projectMap = {};
       reportMap  = {};
 
-      getActiveItems('projects').forEach(function(p) {
+      filterProjectsByAccess(getActiveItems('projects')).forEach(function(p) {
         var d = p.executionDate;
         if (!d) return;
         if (!projectMap[d]) projectMap[d] = [];
         projectMap[d].push(p);
       });
 
-      getActiveItems('reports').forEach(function(r) {
+      getActiveItems('reports').filter(function(r) { return canAccessProject(r.projectId); }).forEach(function(r) {
         var d = r.date;
         if (!d) return;
         if (!reportMap[d]) reportMap[d] = [];
