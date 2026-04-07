@@ -4,24 +4,44 @@
       ".read": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
       "$uid": {
         ".read": "auth != null && auth.uid === $uid",
-        ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || (auth.uid === $uid && (!data.exists() ? newData.child('role').val() === 'worker' && newData.child('active').val() === true : newData.child('role').val() === data.child('role').val() && newData.child('active').val() === data.child('active').val())))"
+        ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || (auth.uid === $uid && data.exists() && newData.child('role').val() === data.child('role').val() && newData.child('active').val() === data.child('active').val()))"
       }
     },
     "pendingUsers": {
       ".read":  "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
       ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
       "$emailKey": {
-        ".read": "auth != null"
+        ".read": "auth != null",
+        ".write": "auth != null && data.exists() && auth.token.email_verified === true && data.child('email').val() === auth.token.email && newData.child('email').val() === data.child('email').val() && newData.child('claimedUid').val() === auth.uid && (!data.child('claimedUid').exists() || data.child('claimedUid').val() === auth.uid)"
       }
     },
-    "projectAssignments": {
-      ".read":  "auth != null",
+    "pendingUsersMeta": {
+      ".read":  "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
       ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'"
     },
-    "projects":  { ".read": "auth != null", ".write": "auth != null" },
-    "reports":   { ".read": "auth != null", ".write": "auth != null" },
-    "documents": { ".read": "auth != null", ".write": "auth != null" },
-    "drives":    { ".read": "auth != null", ".write": "auth != null" },
-    "costs":     { ".read": "auth != null", ".write": "auth != null" }
+    "projectAssignments": {
+      ".read":  "auth != null && root.child('users').child(auth.uid).child('active').val() === true",
+      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'"
+    },
+    "projects":  {
+      ".read":  "auth != null && root.child('users').child(auth.uid).child('active').val() === true",
+      ".write": "auth != null && root.child('users').child(auth.uid).child('active').val() === true"
+    },
+    "reports":   {
+      ".read":  "auth != null && root.child('users').child(auth.uid).child('active').val() === true",
+      ".write": "auth != null && root.child('users').child(auth.uid).child('active').val() === true"
+    },
+    "documents": {
+      ".read":  "auth != null && root.child('users').child(auth.uid).child('active').val() === true",
+      ".write": "auth != null && root.child('users').child(auth.uid).child('active').val() === true"
+    },
+    "drives":    {
+      ".read":  "auth != null && root.child('users').child(auth.uid).child('active').val() === true",
+      ".write": "auth != null && root.child('users').child(auth.uid).child('active').val() === true"
+    },
+    "costs":     {
+      ".read":  "auth != null && root.child('users').child(auth.uid).child('active').val() === true",
+      ".write": "auth != null && root.child('users').child(auth.uid).child('active').val() === true"
+    }
   }
 }

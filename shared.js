@@ -111,6 +111,27 @@ function signOut() {
 }
 
 /**
+ * Clear all local state and cache for a user and sign them out.
+ * Called when an unauthorized login attempt is detected.
+ */
+function _denyAccess(uid, reason) {
+  console.warn('[Auth] Access denied:', reason || 'no approved account');
+  // Clear any cached profile so no stale data leaks through
+  try {
+    if (uid) {
+      localStorage.removeItem('ff_userprofile_' + uid);
+      localStorage.removeItem('ff_assignments_' + uid);
+    }
+  } catch(e) {}
+  currentUserRole    = 'worker';
+  currentUserProfile = null;
+  allowedProjectIds  = {};
+  return auth.signOut().then(function() {
+    window.location.href = 'index.html?error=unauthorized';
+  });
+}
+
+/**
  * Initialize app with auth guard.
  * On login page: handles redirect result + listens to auth state.
  * On protected pages: waits for auth to resolve, redirects if not logged in.
@@ -165,6 +186,18 @@ function _initLoginPage(callback) {
       // Definitely no user — show login UI
       console.log('[Auth] No user — showing login button');
       if (callback) callback(null);
+      // Show denial message if redirected here after an unauthorized login attempt
+      if (getUrlParam('error') === 'unauthorized') {
+        setTimeout(function() {
+          showToast('Kein freigegebener Account für diese E-Mail. Bitte Admin kontaktieren.', 'error');
+        }, 400);
+      }
+      // Show waiting message if account was claimed but not yet activated by admin
+      if (getUrlParam('pending') === '1') {
+        setTimeout(function() {
+          showToast('Konto beansprucht — bitte Admin um Freigabe und dann erneut einloggen.', 'warning');
+        }, 400);
+      }
     }
   });
 }
@@ -192,6 +225,16 @@ function _initProtectedPage(callback) {
     // Load user profile + role before handing off to the page.
     // Works offline via localStorage cache.
     _registerAndLoadUser(user).then(function() {
+      // If profile is still null after the call (denied, offline+no-cache, or error),
+      // stop the chain — the user must not see any app content.
+      if (!currentUserProfile) {
+        if (!isOnline) {
+          console.warn('[Auth] No cached profile and offline — redirecting to login');
+          window.location.href = 'index.html';
+        }
+        // online case: _denyAccess already handling signOut + redirect
+        return Promise.reject('access-denied');
+      }
       return loadAllowedProjectIds(user);
     }).then(function() {
       console.log('[Auth] Role:', currentUserRole,
@@ -210,6 +253,10 @@ function _initProtectedPage(callback) {
           console.log('[Auth] Auth state null while offline — keeping session');
         }
       });
+    }).catch(function(err) {
+      if (err !== 'access-denied') {
+        console.warn('[Auth] _initProtectedPage error:', err);
+      }
     });
   }
 
@@ -281,37 +328,32 @@ function _registerAndLoadUser(user) {
       try { localStorage.setItem(cacheKey, JSON.stringify(currentUserProfile)); } catch(e) {}
       return ref.update(updates);
     } else {
-      // First ever login — check for pre-provisioned account by email
+      // First ever login — MUST have a pre-provisioned account.
+      // Rules no longer allow self-creation of users/{uid} (admin-only for new records).
+      // Flow: claim the pending record by writing our UID into it, then wait for admin
+      // to activate us via admin.html (which writes users/{uid} with admin token).
       var emailKey = (user.email || '').toLowerCase().replace(/[^a-z0-9]/g, '_');
       return db.ref('pendingUsers/' + emailKey).once('value').then(function(pendingSnap) {
         var pending = pendingSnap.val();
-        var profile = {
-          uid:         user.uid,
-          email:       user.email       || '',
-          displayName: user.displayName || (pending && pending.displayName) || '',
-          role:        (pending && pending.role)   || 'worker',
-          active:      (pending && pending.active  !== undefined) ? pending.active : true,
-          createdAt:   now,
-          lastSeen:    now
-        };
-        currentUserRole    = profile.role;
-        currentUserProfile = profile;
-        try { localStorage.setItem(cacheKey, JSON.stringify(profile)); } catch(e) {}
-        var writes = [ref.set(profile)];
-        if (pending) {
-          // Migrate project assignments from pending record to real UID
-          var assignedProjectIds = pending.assignedProjectIds || {};
-          var projectKeys = Object.keys(assignedProjectIds);
-          if (projectKeys.length > 0) {
-            var assignUpdates = {};
-            projectKeys.forEach(function(projectId) {
-              assignUpdates['projectAssignments/' + projectId + '/assignedTo/' + user.uid] = true;
-            });
-            writes.push(db.ref().update(assignUpdates));
-          }
-          writes.push(db.ref('pendingUsers/' + emailKey).remove());
+
+        if (!pending) {
+          // No pre-provisioned account found — deny access entirely
+          return _denyAccess(user.uid, 'no pending account for ' + user.email);
         }
-        return Promise.all(writes);
+
+        // Pre-provisioned account found — claim it (write uid) and show "pending" screen.
+        // Actual profile creation in users/{uid} happens when admin clicks "Aktivieren".
+        return db.ref('pendingUsers/' + emailKey).update({
+          claimedUid: user.uid,
+          claimedAt:  now
+        }).then(function() {
+          console.log('[Auth] Pending account claimed for:', user.email, '— awaiting admin activation');
+          // Leave currentUserProfile null so _initProtectedPage stops the chain
+          window.location.href = 'index.html?pending=1';
+        }).catch(function(claimErr) {
+          console.warn('[Auth] Could not claim pending account:', claimErr.message);
+          window.location.href = 'index.html?pending=1';
+        });
       });
     }
   }).catch(function(err) {

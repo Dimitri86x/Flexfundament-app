@@ -75,11 +75,12 @@
   <script src="shared.js"></script>
   <script>
 
-    var allUsers        = {};   // uid → profile
-    var allAssignments  = {};   // projectId → { assignedTo: {uid: true} }
-    var allProjects     = [];   // getActiveItems('projects')
-    var allPendingUsers = {};   // emailKey → pending profile
-    var expandedUid     = null; // which user's project list is open
+    var allUsers            = {};   // uid → profile
+    var allAssignments      = {};   // projectId → { assignedTo: {uid: true} }
+    var allProjects         = [];   // getActiveItems('projects')
+    var allPendingUsers     = {};   // emailKey → { email, claimedUid?, claimedAt? }
+    var allPendingUsersMeta = {};   // emailKey → admin-set data (role, active, assignedProjectIds, …)
+    var expandedUid         = null; // which user's project list is open
 
     initApp(function() {
       if (currentUserRole !== 'admin') {
@@ -105,16 +106,18 @@
         db.ref('users').once('value'),
         db.ref('projectAssignments').once('value'),
         db.ref('pendingUsers').once('value'),
+        db.ref('pendingUsersMeta').once('value'),
         syncWithFirebase('projects'),
         syncWithFirebase('reports'),
         syncWithFirebase('costs'),
         syncWithFirebase('documents'),
         syncWithFirebase('drives')
       ]).then(function(results) {
-        allUsers        = results[0].val() || {};
-        allAssignments  = results[1].val() || {};
-        allPendingUsers = results[2].val() || {};
-        allProjects     = getActiveItems('projects');
+        allUsers            = results[0].val() || {};
+        allAssignments      = results[1].val() || {};
+        allPendingUsers     = results[2].val() || {};
+        allPendingUsersMeta = results[3].val() || {};
+        allProjects         = getActiveItems('projects');
         renderUsers();
         renderActivitySection();
       }).catch(function(err) {
@@ -194,31 +197,46 @@
       var pendingKeys = Object.keys(allPendingUsers);
       if (pendingKeys.length > 0) {
         html += pendingKeys.map(function(key) {
-          var p = allPendingUsers[key];
+          var claim = allPendingUsers[key];     // {email, claimedUid?, claimedAt?}
+          var meta  = allPendingUsersMeta[key]; // admin-set: displayName, role, assignedProjectIds, …
+          if (!claim) return '';
+          var isClaimed = !!claim.claimedUid;
+          var role = (meta && meta.role) || 'worker';
+          var name = (meta && meta.displayName) || '–';
+
+          var projectNames = '';
+          if (meta && meta.assignedProjectIds) {
+            var pids = Object.keys(meta.assignedProjectIds);
+            if (pids.length > 0) {
+              projectNames = '<div style="font-size:.75rem;color:var(--color-text-secondary);margin-top:4px;">Projekte: ' +
+                pids.map(function(pid) {
+                  var proj = allProjects.find(function(pr) { return pr.id === pid; });
+                  return proj ? esc(proj.name) : esc(pid);
+                }).join(', ') + '</div>';
+            }
+          }
+
           return (
             '<div class="card admin-user-card" style="opacity:.8;">' +
               '<div class="admin-user-header">' +
-                '<span class="admin-user-name">' + esc(p.displayName || '–') +
-                  ' <span class="badge-pending">Ausstehend</span>' +
+                '<span class="admin-user-name">' + esc(name) +
+                  ' <span class="badge-pending">' + (isClaimed ? 'Beansprucht' : 'Ausstehend') + '</span>' +
                 '</span>' +
-                '<span class="admin-user-email">' + esc(p.email || '') + '</span>' +
+                '<span class="admin-user-email">' + esc(claim.email || '') + '</span>' +
               '</div>' +
               '<div style="display:flex;align-items:center;justify-content:space-between;font-size:.8rem;color:var(--color-text-secondary);">' +
-                '<span>Rolle: ' + esc(p.role || 'worker') + '</span>' +
-                '<button onclick="deletePendingUser(\'' + key + '\')" ' +
-                  'class="btn btn-secondary" style="font-size:.75rem;min-height:30px;padding:3px 10px;color:var(--color-error);border-color:var(--color-error);">' +
-                  'Löschen' +
-                '</button>' +
+                '<span>Rolle: ' + esc(role) + '</span>' +
+                '<div style="display:flex;gap:6px;">' +
+                  (isClaimed
+                    ? '<button onclick="activatePendingUser(\'' + key + '\')" class="btn btn-primary" style="font-size:.75rem;min-height:30px;padding:3px 10px;">Aktivieren</button>'
+                    : '') +
+                  '<button onclick="deletePendingUser(\'' + key + '\')" ' +
+                    'class="btn btn-secondary" style="font-size:.75rem;min-height:30px;padding:3px 10px;color:var(--color-error);border-color:var(--color-error);">' +
+                    'Löschen' +
+                  '</button>' +
+                '</div>' +
               '</div>' +
-              (function() {
-                var pids = Object.keys(p.assignedProjectIds || {});
-                if (pids.length === 0) return '';
-                var names = pids.map(function(pid) {
-                  var proj = allProjects.find(function(pr) { return pr.id === pid; });
-                  return proj ? esc(proj.name) : esc(pid);
-                }).join(', ');
-                return '<div style="font-size:.75rem;color:var(--color-text-secondary);margin-top:4px;">Projekte: ' + names + '</div>';
-              })() +
+              projectNames +
             '</div>'
           );
         }).join('');
@@ -389,8 +407,11 @@
         if (cb && cb.checked) assignedProjectIds[p.id] = true;
       });
 
-      var record = {
-        email:              email,
+      // pendingUsers: only claim-relevant fields (user-accessible via Rules)
+      var claimRecord = { email: email };
+
+      // pendingUsersMeta: admin-set data — user can never read or write this path
+      var metaRecord = {
         displayName:        name || '',
         role:               role,
         active:             true,
@@ -401,8 +422,12 @@
         createdByName:      adminUser.displayName  || ''
       };
 
-      db.ref('pendingUsers/' + emailKey).set(record).then(function() {
-        allPendingUsers[emailKey] = record;
+      Promise.all([
+        db.ref('pendingUsers/'     + emailKey).set(claimRecord),
+        db.ref('pendingUsersMeta/' + emailKey).set(metaRecord)
+      ]).then(function() {
+        allPendingUsers[emailKey]     = claimRecord;
+        allPendingUsersMeta[emailKey] = metaRecord;
         toggleAddUserForm();
         renderUsers();
         showToast('Benutzer angelegt. Wird beim ersten Login aktiviert.', 'success');
@@ -411,9 +436,69 @@
       });
     }
 
-    function deletePendingUser(emailKey) {
-      db.ref('pendingUsers/' + emailKey).remove().then(function() {
+    function activatePendingUser(emailKey) {
+      var claim = allPendingUsers[emailKey];
+      var meta  = allPendingUsersMeta[emailKey]; // admin-set data — user cannot tamper with this
+      if (!claim || !claim.claimedUid) {
+        showToast('Kein beanspruchtes Konto gefunden.', 'error');
+        return;
+      }
+      if (!meta) {
+        showToast('Admin-Metadaten nicht gefunden.', 'error');
+        return;
+      }
+      var adminUser = firebase.auth().currentUser;
+      var now = Date.now();
+
+      // Profile is built exclusively from admin-set meta — the user-written claim
+      // record contains only the claimedUid; no user-controlled data is trusted here.
+      var profile = {
+        uid:          claim.claimedUid,
+        email:        claim.email           || '',
+        displayName:  meta.displayName      || '',
+        role:         meta.role             || 'worker',
+        active:       meta.active !== undefined ? meta.active : true,
+        createdAt:    meta.createdAt        || now,
+        lastSeen:     claim.claimedAt       || now,
+        activatedBy:  adminUser.uid,
+        activatedAt:  now
+      };
+
+      var writes = [db.ref('users/' + claim.claimedUid).set(profile)];
+
+      // Migrate project assignments from admin-set meta (not from claim)
+      var assignedProjectIds = meta.assignedProjectIds || {};
+      var projectKeys = Object.keys(assignedProjectIds);
+      if (projectKeys.length > 0) {
+        var assignUpdates = {};
+        projectKeys.forEach(function(projectId) {
+          assignUpdates['projectAssignments/' + projectId + '/assignedTo/' + claim.claimedUid] = true;
+        });
+        writes.push(db.ref().update(assignUpdates));
+      }
+
+      // Remove both pending records
+      writes.push(db.ref('pendingUsers/'     + emailKey).remove());
+      writes.push(db.ref('pendingUsersMeta/' + emailKey).remove());
+
+      Promise.all(writes).then(function() {
+        allUsers[claim.claimedUid] = profile;
         delete allPendingUsers[emailKey];
+        delete allPendingUsersMeta[emailKey];
+        renderUsers();
+        showToast('Benutzer aktiviert.', 'success');
+      }).catch(function(err) {
+        showToast('Fehler: ' + err.message, 'error');
+      });
+    }
+
+    function deletePendingUser(emailKey) {
+      Promise.all([
+        db.ref('pendingUsers/'     + emailKey).remove(),
+        db.ref('pendingUsersMeta/' + emailKey).remove()
+      ]).then(function() {
+        delete allPendingUsers[emailKey];
+        delete allPendingUsersMeta[emailKey];
         renderUsers();
         showToast('Ausstehender Benutzer gelöscht.', 'success');
       }).catch(function(err) {
