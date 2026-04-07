@@ -31,6 +31,7 @@
     <div id="userList">
       <div class="card"><p class="list-empty">Lade Benutzer…</p></div>
     </div>
+    <div id="sectionActivity"></div>
   </div>
 
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
@@ -68,12 +69,17 @@
       Promise.all([
         db.ref('users').once('value'),
         db.ref('projectAssignments').once('value'),
-        syncWithFirebase('projects')
+        syncWithFirebase('projects'),
+        syncWithFirebase('reports'),
+        syncWithFirebase('costs'),
+        syncWithFirebase('documents'),
+        syncWithFirebase('drives')
       ]).then(function(results) {
         allUsers       = results[0].val() || {};
         allAssignments = results[1].val() || {};
         allProjects    = getActiveItems('projects');
         renderUsers();
+        renderActivitySection();
       }).catch(function(err) {
         document.getElementById('userList').innerHTML =
           '<div class="card"><p class="list-empty" style="padding:var(--spacing-lg);">Fehler beim Laden: ' + esc(err.message) + '</p></div>';
@@ -257,6 +263,65 @@
       var d = document.createElement('div');
       d.textContent = str || '';
       return d.innerHTML;
+    }
+
+    // ---------------------------------------------------------------
+    // Activity section — aggregates updatedAt/By from all collections
+    // ---------------------------------------------------------------
+    function renderActivitySection() {
+      var cols = [
+        { key: 'projects',  label: 'Projekt',   nameField: 'name' },
+        { key: 'reports',   label: 'Bericht',   nameField: 'projectName' },
+        { key: 'costs',     label: 'Kosten',    nameField: 'category' },
+        { key: 'documents', label: 'Dokument',  nameField: 'name' },
+        { key: 'drives',    label: 'Fahrt',     nameField: 'projectName' }
+      ];
+
+      var entries = [];
+      cols.forEach(function(col) {
+        getActiveItems(col.key).forEach(function(item) {
+          if (!item.updatedAt) return;
+          entries.push({
+            ts:     item.updatedAt,
+            by:     item.updatedByName || item.updatedByEmail || item.updatedByUid || '–',
+            module: col.label,
+            name:   item[col.nameField] || '–'
+          });
+        });
+      });
+
+      if (entries.length === 0) {
+        document.getElementById('sectionActivity').innerHTML = '';
+        return;
+      }
+
+      entries.sort(function(a, b) { return b.ts - a.ts; });
+      entries = entries.slice(0, 15);
+
+      var rows = entries.map(function(e) {
+        var d       = new Date(e.ts);
+        var dateStr = d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        var timeStr = d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+        return (
+          '<div style="display:flex;justify-content:space-between;align-items:flex-start;' +
+                'padding:9px 0;border-bottom:1px solid var(--color-border);gap:8px;">' +
+            '<div style="min-width:0;flex:1;">' +
+              '<span style="font-size:.85rem;font-weight:500;">' + esc(e.by) + '</span>' +
+              '<span style="font-size:.8rem;color:var(--color-text-secondary);display:block;' +
+                    'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' +
+                esc(e.module) + ' · ' + esc(e.name) +
+              '</span>' +
+            '</div>' +
+            '<span style="font-size:.75rem;color:var(--color-text-secondary);white-space:nowrap;flex-shrink:0;">' +
+              dateStr + '<br>' + timeStr +
+            '</span>' +
+          '</div>'
+        );
+      }).join('');
+
+      document.getElementById('sectionActivity').innerHTML =
+        '<div class="section-title" style="margin-top:var(--spacing-lg);">Letzte Änderungen</div>' +
+        '<div class="card">' + rows + '</div>';
     }
 
   </script>
