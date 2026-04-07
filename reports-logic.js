@@ -829,8 +829,7 @@ document.getElementById('btnPdf').addEventListener('click', function() {
     // Auto-set status to abgeschlossen after PDF export
     r.status = 'abgeschlossen';
     document.getElementById('fStatus').value = 'abgeschlossen';
-    saveToLocal('reports', currentId, r);
-    if (isOnline) syncItemToFirebase('reports', currentId, r);
+    saveToLocal('reports', currentId, r); // handles Firebase sync internally (with base64 stripped)
 
     showToast('PDF erstellt — Status: abgeschlossen', 'success');
 

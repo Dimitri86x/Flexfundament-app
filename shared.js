@@ -399,10 +399,27 @@ function syncAllCollections() {
  * Adds savedAt, savedBy, deleted fields automatically.
  */
 function saveToLocal(collection, id, data) {
-  var user = auth.currentUser;
-  data.savedAt = Date.now();
+  var user    = auth.currentUser;
+  var profile = currentUserProfile;
+  var now     = Date.now();
+
+  data.savedAt = now;
   data.savedBy = user ? user.uid : 'anonymous';
   if (data.deleted === undefined) data.deleted = false;
+
+  // Traceability: updatedAt/By on every save
+  data.updatedAt      = now;
+  data.updatedByUid   = user   ? user.uid   : '';
+  data.updatedByEmail = profile ? (profile.email       || (user ? user.email : ''))       : (user ? user.email : '');
+  data.updatedByName  = profile ? (profile.displayName || (user ? user.displayName : '')) : (user ? user.displayName : '');
+
+  // Traceability: createdAt/By only on first save
+  if (!data.createdAt) {
+    data.createdAt      = now;
+    data.createdByUid   = data.updatedByUid;
+    data.createdByEmail = data.updatedByEmail;
+    data.createdByName  = data.updatedByName;
+  }
 
   // Strip Base64 before writing to Firebase or localStorage (avoids 10MB node limit in Realtime DB)
   var cleanData = stripBase64(JSON.parse(JSON.stringify(data)));
