@@ -253,6 +253,7 @@
         currentId = id;
         var d = getItemById('drives', id);
         if (!d) { showToast('Fahrt nicht gefunden', 'error'); showList(); return; }
+        if (!canAccessProject(d.projectId)) { showToast('Kein Zugriff auf diese Fahrt.', 'error'); showList(); return; }
         document.getElementById('formTitle').textContent = 'Fahrt bearbeiten';
         history.replaceState(null, '', 'drives.html?id=' + id + (urlProjectId ? '&projectId=' + urlProjectId : ''));
         fillForm(d);

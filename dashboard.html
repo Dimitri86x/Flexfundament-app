@@ -29,7 +29,7 @@
         <span class="quick-btn-icon">&#128203;</span>
         Neuer Bericht
       </a>
-      <a href="projects.html?new=1" class="quick-btn">
+      <a href="projects.html?new=1" class="quick-btn" id="btnNewProject">
         <span class="quick-btn-icon">&#128204;</span>
         Neues Projekt
       </a>
@@ -71,6 +71,9 @@
         days[now.getDay()] + ', ' + now.getDate() + '. ' + months[now.getMonth()] + ' ' + now.getFullYear();
 
       document.getElementById('btnLogout').addEventListener('click', signOut);
+      if (currentUserRole !== 'admin') {
+        document.getElementById('btnNewProject').style.display = 'none';
+      }
 
       if (isOnline) {
         Promise.all([

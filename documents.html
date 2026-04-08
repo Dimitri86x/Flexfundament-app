@@ -209,6 +209,7 @@
         isEditMode = true;
         var d = getItemById('documents', id);
         if (!d) { showToast('Dokument nicht gefunden', 'error'); showList(); return; }
+        if (!canAccessProject(d.projectId)) { showToast('Kein Zugriff auf dieses Dokument.', 'error'); showList(); return; }
         document.getElementById('formTitle').textContent = 'Dokument bearbeiten';
         history.replaceState(null, '', 'documents.html?id=' + id + (urlProjectId ? '&projectId=' + urlProjectId : ''));
         fillForm(d);

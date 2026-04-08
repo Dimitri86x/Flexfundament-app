@@ -238,6 +238,7 @@
         currentId = id;
         var c = getItemById('costs', id);
         if (!c) { showToast('Kosteneintrag nicht gefunden', 'error'); showList(); return; }
+        if (!canAccessProject(c.projectId)) { showToast('Kein Zugriff auf diesen Kosteneintrag.', 'error'); showList(); return; }
         document.getElementById('formTitle').textContent = 'Kosten bearbeiten';
         history.replaceState(null, '', 'costs.html?id=' + id + (urlProjectId ? '&projectId=' + urlProjectId : ''));
         fillForm(c);

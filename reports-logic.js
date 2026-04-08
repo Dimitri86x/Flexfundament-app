@@ -135,6 +135,7 @@ function openForm(id) {
     currentId = id;
     var r = getItemById('reports', id);
     if (!r) { showToast('Bericht nicht gefunden', 'error'); showList(); return; }
+    if (!canAccessProject(r.projectId)) { showToast('Kein Zugriff auf diesen Bericht.', 'error'); showList(); return; }
     document.getElementById('formTitle').textContent = 'Einsatzbericht bearbeiten';
     history.replaceState(null, '', 'reports.html?id=' + id + (urlProjectId ? '&projectId=' + urlProjectId : ''));
     fillForm(r);
