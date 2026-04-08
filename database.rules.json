@@ -23,25 +23,44 @@
       ".read":  "auth != null && root.child('users').child(auth.uid).child('active').val() === true",
       ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'"
     },
-    "projects":  {
-      ".read":  "auth != null && root.child('users').child(auth.uid).child('active').val() === true",
-      ".write": "auth != null && root.child('users').child(auth.uid).child('active').val() === true"
+    "projects": {
+      ".read":  "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
+      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
+      "$projectId": {
+        ".read": "auth != null && root.child('users').child(auth.uid).child('active').val() === true && root.child('projectAssignments').child($projectId).child('assignedTo').child(auth.uid).val() === true"
+      }
     },
-    "reports":   {
-      ".read":  "auth != null && root.child('users').child(auth.uid).child('active').val() === true",
-      ".write": "auth != null && root.child('users').child(auth.uid).child('active').val() === true"
+    "reports": {
+      ".read":    "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
+      ".indexOn": ["projectId"],
+      "$recordId": {
+        ".read":  "auth != null && root.child('users').child(auth.uid).child('active').val() === true && root.child('projectAssignments').child(data.child('projectId').val()).child('assignedTo').child(auth.uid).val() === true",
+        ".write": "auth != null && root.child('users').child(auth.uid).child('active').val() === true && (root.child('users').child(auth.uid).child('role').val() === 'admin' || (newData.exists() && newData.child('deleted').val() !== true && root.child('projectAssignments').child(newData.child('projectId').val()).child('assignedTo').child(auth.uid).val() === true && (!data.exists() || root.child('projectAssignments').child(data.child('projectId').val()).child('assignedTo').child(auth.uid).val() === true)))"
+      }
     },
     "documents": {
-      ".read":  "auth != null && root.child('users').child(auth.uid).child('active').val() === true",
-      ".write": "auth != null && root.child('users').child(auth.uid).child('active').val() === true"
+      ".read":    "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
+      ".indexOn": ["projectId"],
+      "$recordId": {
+        ".read":  "auth != null && root.child('users').child(auth.uid).child('active').val() === true && root.child('projectAssignments').child(data.child('projectId').val()).child('assignedTo').child(auth.uid).val() === true",
+        ".write": "auth != null && root.child('users').child(auth.uid).child('active').val() === true && (root.child('users').child(auth.uid).child('role').val() === 'admin' || (!data.exists() && newData.exists() && newData.child('deleted').val() !== true && root.child('projectAssignments').child(newData.child('projectId').val()).child('assignedTo').child(auth.uid).val() === true))"
+      }
     },
-    "drives":    {
-      ".read":  "auth != null && root.child('users').child(auth.uid).child('active').val() === true",
-      ".write": "auth != null && root.child('users').child(auth.uid).child('active').val() === true"
+    "drives": {
+      ".read":    "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
+      ".indexOn": ["projectId"],
+      "$recordId": {
+        ".read":  "auth != null && root.child('users').child(auth.uid).child('active').val() === true && root.child('projectAssignments').child(data.child('projectId').val()).child('assignedTo').child(auth.uid).val() === true",
+        ".write": "auth != null && root.child('users').child(auth.uid).child('active').val() === true && (root.child('users').child(auth.uid).child('role').val() === 'admin' || (newData.exists() && newData.child('deleted').val() !== true && root.child('projectAssignments').child(newData.child('projectId').val()).child('assignedTo').child(auth.uid).val() === true && (!data.exists() || root.child('projectAssignments').child(data.child('projectId').val()).child('assignedTo').child(auth.uid).val() === true)))"
+      }
     },
-    "costs":     {
-      ".read":  "auth != null && root.child('users').child(auth.uid).child('active').val() === true",
-      ".write": "auth != null && root.child('users').child(auth.uid).child('active').val() === true"
+    "costs": {
+      ".read":    "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
+      ".indexOn": ["projectId"],
+      "$recordId": {
+        ".read":  "auth != null && root.child('users').child(auth.uid).child('active').val() === true && root.child('projectAssignments').child(data.child('projectId').val()).child('assignedTo').child(auth.uid).val() === true",
+        ".write": "auth != null && root.child('users').child(auth.uid).child('active').val() === true && (root.child('users').child(auth.uid).child('role').val() === 'admin' || (newData.exists() && newData.child('deleted').val() !== true && root.child('projectAssignments').child(newData.child('projectId').val()).child('assignedTo').child(auth.uid).val() === true && (!data.exists() || root.child('projectAssignments').child(data.child('projectId').val()).child('assignedTo').child(auth.uid).val() === true)))"
+      }
     }
   }
 }

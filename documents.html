@@ -182,7 +182,7 @@
             '<div class="doc-actions">' +
               '<button class="btn btn-secondary" onclick="viewDoc(\'' + d.id + '\')">Anzeigen</button>' +
               '<button class="btn btn-secondary" onclick="downloadDoc(\'' + d.id + '\')">Download</button>' +
-              '<button class="btn btn-secondary" onclick="openForm(\'' + d.id + '\')">Bearbeiten</button>' +
+              (currentUserRole === 'admin' ? '<button class="btn btn-secondary" onclick="openForm(\'' + d.id + '\')">Bearbeiten</button>' : '') +
             '</div>' +
           '</div>' +
         '</div>';
@@ -210,10 +210,11 @@
         var d = getItemById('documents', id);
         if (!d) { showToast('Dokument nicht gefunden', 'error'); showList(); return; }
         if (!canAccessProject(d.projectId)) { showToast('Kein Zugriff auf dieses Dokument.', 'error'); showList(); return; }
+        if (currentUserRole !== 'admin') { showList(); return; }
         document.getElementById('formTitle').textContent = 'Dokument bearbeiten';
         history.replaceState(null, '', 'documents.html?id=' + id + (urlProjectId ? '&projectId=' + urlProjectId : ''));
         fillForm(d);
-        document.getElementById('btnDelete').style.display = '';
+        document.getElementById('btnDelete').style.display = currentUserRole === 'admin' ? '' : 'none';
         document.getElementById('btnAddPosition').style.display = 'none';
       } else {
         currentId = null;
@@ -423,7 +424,9 @@
             '<div class="pos-file-name">' + esc(f.name) + cloudTag + '</div>' +
             '<div class="pos-file-size">' + formatSize(f.size) + (f.originalSize && f.originalSize > f.size ? ' (komprimiert von ' + formatSize(f.originalSize) + ')' : '') + '</div>' +
           '</div>' +
-          '<button type="button" class="pos-file-remove" data-pos="' + posIdx + '" data-file="' + fIdx + '">&times;</button>' +
+          (currentUserRole === 'admin' || !currentId
+            ? '<button type="button" class="pos-file-remove" data-pos="' + posIdx + '" data-file="' + fIdx + '">&times;</button>'
+            : '') +
         '</div>';
       }).join('');
 
@@ -646,7 +649,7 @@
           isEditMode = true;
           history.replaceState(null, '', 'documents.html?id=' + currentId);
           document.getElementById('formTitle').textContent = 'Dokument bearbeiten';
-          document.getElementById('btnDelete').style.display = '';
+          document.getElementById('btnDelete').style.display = currentUserRole === 'admin' ? '' : 'none';
           document.getElementById('btnAddPosition').style.display = 'none';
         } else {
           showList();

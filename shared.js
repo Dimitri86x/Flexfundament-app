@@ -607,42 +607,82 @@ function syncItemToFirebase(collection, id, data) {
 
 /**
  * Full two-way sync for a collection (Last-Write-Wins via savedAt).
+ *
+ * Admin: bulk read of entire collection.
+ * Worker: per-project queries — projects by ID, other collections via
+ *         orderByChild('projectId').equalTo(pid) for each assigned project.
  */
 function syncWithFirebase(collection) {
   if (!isOnline) return Promise.resolve();
 
-  return db.ref(collection).once('value').then(function(snapshot) {
-    var remoteData = snapshot.val() || {};
-    var localData = loadFromLocal(collection);
-    var merged = {};
+  // Admin: bulk read
+  if (allowedProjectIds === null) {
+    return db.ref(collection).once('value').then(function(snapshot) {
+      return _mergeSyncResult(collection, snapshot.val() || {});
+    }).catch(function() {});
+  }
 
-    var allKeys = new Set(Object.keys(localData).concat(Object.keys(remoteData)));
-    allKeys.forEach(function(id) {
-      var local = localData[id];
-      var remote = remoteData[id];
+  // Worker: per-project read
+  var pids = Object.keys(allowedProjectIds || {});
+  if (pids.length === 0) return Promise.resolve();
 
-      if (local && remote) {
-        if ((local.savedAt || 0) >= (remote.savedAt || 0)) {
-          merged[id] = local;
-          if ((local.savedAt || 0) > (remote.savedAt || 0)) {
-            syncItemToFirebase(collection, id, local);
-          }
-        } else {
-          merged[id] = remote;
-        }
-      } else if (local) {
+  var queries;
+  if (collection === 'projects') {
+    queries = pids.map(function(pid) {
+      return db.ref('projects/' + pid).once('value').then(function(snap) {
+        if (!snap.exists()) return {};
+        var obj = {};
+        obj[snap.key] = snap.val();
+        return obj;
+      });
+    });
+  } else {
+    queries = pids.map(function(pid) {
+      return db.ref(collection).orderByChild('projectId').equalTo(pid).once('value').then(function(snap) {
+        return snap.val() || {};
+      });
+    });
+  }
+
+  return Promise.all(queries).then(function(results) {
+    var remoteData = {};
+    results.forEach(function(r) { Object.assign(remoteData, r); });
+    return _mergeSyncResult(collection, remoteData);
+  }).catch(function() {});
+}
+
+/**
+ * Merge remote data into local storage (Last-Write-Wins via savedAt).
+ * Pushes locally-newer records back to Firebase.
+ */
+function _mergeSyncResult(collection, remoteData) {
+  var localData = loadFromLocal(collection);
+  var merged = {};
+
+  var allKeys = new Set(Object.keys(localData).concat(Object.keys(remoteData)));
+  allKeys.forEach(function(id) {
+    var local = localData[id];
+    var remote = remoteData[id];
+
+    if (local && remote) {
+      if ((local.savedAt || 0) >= (remote.savedAt || 0)) {
         merged[id] = local;
-        syncItemToFirebase(collection, id, local);
+        if ((local.savedAt || 0) > (remote.savedAt || 0)) {
+          syncItemToFirebase(collection, id, local);
+        }
       } else {
         merged[id] = remote;
       }
-    });
-
-    localStorage.setItem('ff_' + collection, JSON.stringify(merged));
-    return merged;
-  }).catch(function(err) {
-    // Offline or permission error — keep local data
+    } else if (local) {
+      merged[id] = local;
+      syncItemToFirebase(collection, id, local);
+    } else {
+      merged[id] = remote;
+    }
   });
+
+  localStorage.setItem('ff_' + collection, JSON.stringify(merged));
+  return merged;
 }
 
 // --- Firebase Storage Upload ---

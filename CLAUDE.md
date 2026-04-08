@@ -119,6 +119,30 @@ Jede Seite ruft `renderNav('seitenname')` auf. Aktive Tab-IDs:
 - Firebase compat API (z.B. `firebase.database()`, nicht `getDatabase(app)`)
 - Event-Delegation wo sinnvoll
 
+## Berechtigungsmatrix (Firebase Rules)
+
+Geprüft und durch Emulator-Tests bestätigt (`test-rules/rules.test.js`, 29/29).
+
+| Collection | Worker lesen | Worker schreiben | Worker löschen |
+|---|---|---|---|
+| `projects` | nur zugewiesene (record-level) | nein | nein |
+| `reports` | nur zugewiesene Projekte | ja (kein `deleted:true`) | nein (hard + soft) |
+| `costs` | nur zugewiesene Projekte | ja (kein `deleted:true`) | nein (hard + soft) |
+| `drives` | nur zugewiesene Projekte | ja (kein `deleted:true`) | nein (hard + soft) |
+| `documents` | nur zugewiesene Projekte | nur neue anlegen (`!data.exists()`) | nein (hard + soft) |
+
+**Wichtige Einschränkung RTDB:** `numChildren()` existiert nicht in RTDB Security Rules (nur Firestore). Foto-Entfernen lässt sich serverseitig nicht erzwingen — Schutz läuft **UI-only** (kein ×-Button für Worker bei bestehenden Datensätzen in `costs.html`, `drives.html`, `reports-logic.js`, `documents.html`).
+
+**Projektzuweisung:** `projectAssignments/{projectId}/assignedTo/{uid} = true` — gesetzt durch Admin. Worker lesen ihre Zuweisungen via `loadAllowedProjectIds()` in `shared.js`.
+
+### Rules testen
+
+```bash
+cd test-rules
+npm install --cache .npm-cache --no-audit --no-fund
+node rules.test.js   # Emulator muss laufen (firebase emulators:start)
+```
+
 ## Bekannte Fallstricke
 
 - `signInWithPopup` ist auf iOS/PWA unzuverlässig → `signInWithGoogle()` in shared.js verwendet Popup mit automatischem Redirect-Fallback

@@ -139,7 +139,7 @@ function openForm(id) {
     document.getElementById('formTitle').textContent = 'Einsatzbericht bearbeiten';
     history.replaceState(null, '', 'reports.html?id=' + id + (urlProjectId ? '&projectId=' + urlProjectId : ''));
     fillForm(r);
-    document.getElementById('btnDelete').style.display = '';
+    document.getElementById('btnDelete').style.display = currentUserRole === 'admin' ? '' : 'none';
     document.getElementById('btnPdf').style.display = '';
   } else {
     currentId = null;
@@ -434,7 +434,10 @@ function renderObstacleGrid() {
         : '<div class="photo-thumb-pdf">&#128247;<br>' + esc(f.name || 'Foto') + '</div>';
     }
     return '<div class="photo-thumb">' + inner +
-      '<button type="button" class="photo-remove" data-i="' + i + '">&times;</button></div>';
+      (currentUserRole === 'admin' || !currentId
+        ? '<button type="button" class="photo-remove" data-i="' + i + '">&times;</button>'
+        : '') +
+      '</div>';
   }).join('');
   grid.querySelectorAll('.photo-remove').forEach(function(btn) {
     btn.addEventListener('click', function() {
@@ -464,7 +467,9 @@ function renderPhotosList() {
     }
     return '<div class="photo-item">' + preview +
       '<input type="text" class="form-input mt-sm" placeholder="Beschreibung..." value="' + esc(p.description || '') + '" data-photo-i="' + i + '">' +
-      '<button type="button" class="btn btn-danger mt-sm" data-rm-photo="' + i + '" style="font-size:.8rem;padding:4px 8px;">Entfernen</button>' +
+      (currentUserRole === 'admin' || !currentId
+        ? '<button type="button" class="btn btn-danger mt-sm" data-rm-photo="' + i + '" style="font-size:.8rem;padding:4px 8px;">Entfernen</button>'
+        : '') +
     '</div>';
   }).join('');
 
@@ -588,7 +593,7 @@ document.getElementById('reportForm').addEventListener('submit', function(e) {
       currentId = id;
       history.replaceState(null, '', 'reports.html?id=' + id);
       document.getElementById('formTitle').textContent = 'Einsatzbericht bearbeiten';
-      document.getElementById('btnDelete').style.display = '';
+      document.getElementById('btnDelete').style.display = currentUserRole === 'admin' ? '' : 'none';
       document.getElementById('btnPdf').style.display = '';
 
       // Auto-transfer GPS to project if project has no coordinates

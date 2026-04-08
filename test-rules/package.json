@@ -1,0 +1,11 @@
+{
+  "name": "flexfundament-rules-tests",
+  "private": true,
+  "scripts": {
+    "test": "node rules.test.js"
+  },
+  "dependencies": {
+    "@firebase/rules-unit-testing": "^3.0.4",
+    "firebase-admin": "^12.0.0"
+  }
+}

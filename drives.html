@@ -257,7 +257,7 @@
         document.getElementById('formTitle').textContent = 'Fahrt bearbeiten';
         history.replaceState(null, '', 'drives.html?id=' + id + (urlProjectId ? '&projectId=' + urlProjectId : ''));
         fillForm(d);
-        document.getElementById('btnDelete').style.display = '';
+        document.getElementById('btnDelete').style.display = currentUserRole === 'admin' ? '' : 'none';
       } else {
         currentId = null;
         document.getElementById('formTitle').textContent = 'Neue Fahrt';
@@ -448,7 +448,9 @@
           '</div>';
         }
         return '<div style="position:relative;aspect-ratio:1;overflow:hidden;border-radius:var(--radius-sm);border:1px solid var(--color-border);">' + content +
-          '<button type="button" onclick="removePhoto(' + i + ')" style="position:absolute;top:2px;right:2px;width:24px;height:24px;background:rgba(0,0,0,.6);color:#fff;border:none;border-radius:50%;font-size:14px;cursor:pointer;">&times;</button>' +
+          (currentUserRole === 'admin' || !currentId
+            ? '<button type="button" onclick="removePhoto(' + i + ')" style="position:absolute;top:2px;right:2px;width:24px;height:24px;background:rgba(0,0,0,.6);color:#fff;border:none;border-radius:50%;font-size:14px;cursor:pointer;">&times;</button>'
+            : '') +
         '</div>';
       }).join('');
     }
@@ -537,7 +539,7 @@
           currentId = id;
           history.replaceState(null, '', 'drives.html?id=' + id + (_projId ? '&projectId=' + _projId : ''));
           document.getElementById('formTitle').textContent = 'Fahrt bearbeiten';
-          document.getElementById('btnDelete').style.display = '';
+          document.getElementById('btnDelete').style.display = currentUserRole === 'admin' ? '' : 'none';
         }).catch(function(err) {
           console.error('[Drives] Save error:', err);
           submitBtn.disabled = false;
