@@ -96,10 +96,31 @@
       reportMap  = {};
 
       filterProjectsByAccess(getActiveItems('projects')).forEach(function(p) {
-        var d = p.executionDate;
-        if (!d) return;
-        if (!projectMap[d]) projectMap[d] = [];
-        projectMap[d].push(p);
+        // Collect all periods to register (new multi-period, legacy single-range, or single date)
+        var periods = [];
+        if (p.executionPeriods && p.executionPeriods.length) {
+          periods = p.executionPeriods;
+        } else if (p.executionStart || p.executionEnd) {
+          periods = [{ start: p.executionStart || '', end: p.executionEnd || '' }];
+        }
+
+        if (periods.length) {
+          periods.forEach(function(period) {
+            if (!period.start || !period.end) return;
+            var cur = new Date(period.start);
+            var end = new Date(period.end);
+            while (cur <= end) {
+              var d = cur.toISOString().split('T')[0];
+              if (!projectMap[d]) projectMap[d] = [];
+              projectMap[d].push(p);
+              cur.setDate(cur.getDate() + 1);
+            }
+          });
+        } else if (p.executionDate) {
+          var d = p.executionDate;
+          if (!projectMap[d]) projectMap[d] = [];
+          projectMap[d].push(p);
+        }
       });
 
       getActiveItems('reports').filter(function(r) { return canAccessProject(r.projectId); }).forEach(function(r) {

@@ -164,6 +164,14 @@
           <label class="form-label">Uhrzeit</label>
           <input type="time" class="form-input" id="fTime">
         </div>
+        <div style="margin-top:var(--spacing-sm);padding-top:var(--spacing-sm);border-top:1px solid var(--color-border);">
+          <label class="form-label" style="margin-bottom:6px;">Ausfuehrungszeitraeume (optional)</label>
+          <div id="periodsContainer"></div>
+          <div class="form-warning" id="wPeriods">Enddatum muss nach Startdatum liegen</div>
+          <button type="button" class="btn btn-secondary" id="btnAddPeriod"
+            style="margin-top:6px;font-size:.85rem;padding:6px 12px;"
+            onclick="addPeriod()">+ Weiteren Zeitraum hinzufügen</button>
+        </div>
       </div>
 
       <!-- Unterlagenstatus -->
@@ -297,6 +305,7 @@
     // --- State ---
     var currentId = null;
     var accessFiles = []; // { dataUrl, name, type }
+    var executionPeriods = []; // [{ start: 'YYYY-MM-DD', end: 'YYYY-MM-DD' }]
 
     // --- Init ---
     initApp(function(user) {
@@ -352,10 +361,13 @@
         return true;
       });
 
-      // Sort by executionDate descending
-      filtered.sort(function(a, b) {
-        return (b.executionDate || '').localeCompare(a.executionDate || '');
-      });
+      // Sort by executionDate (or first period start) descending
+      function sortDate(p) {
+        if (p.executionDate) return p.executionDate;
+        if (p.executionPeriods && p.executionPeriods.length) return p.executionPeriods[0].start || '';
+        return p.executionStart || '';
+      }
+      filtered.sort(function(a, b) { return sortDate(b).localeCompare(sortDate(a)); });
 
       var container = document.getElementById('projectList');
       if (filtered.length === 0) {
@@ -379,9 +391,26 @@
               '<div class="card-subtitle">' + esc(p.client || '') +
                 (p.type ? ' &middot; ' + esc(p.type) : '') + '</div>' +
               (addr ? '<div class="card-subtitle">' + esc(addr) + '</div>' : '') +
-              (p.executionDate ? '<div class="card-subtitle" style="margin-top:2px;">' +
-                formatDate(p.executionDate) +
-                (p.executionTime ? ' ' + formatTime(p.executionTime) : '') + '</div>' : '') +
+              (function() {
+                var periods = p.executionPeriods && p.executionPeriods.length ? p.executionPeriods : null;
+                // Legacy migration: single-range fields
+                if (!periods && (p.executionStart || p.executionEnd)) {
+                  periods = [{ start: p.executionStart || '', end: p.executionEnd || '' }];
+                }
+                if (periods && periods.length) {
+                  var first = periods[0];
+                  var label = (first.start && first.end)
+                    ? formatDate(first.start) + ' &ndash; ' + formatDate(first.end)
+                    : (first.start ? 'ab ' + formatDate(first.start) : '');
+                  var more = periods.length > 1 ? ' <span style="color:var(--color-text-secondary);font-size:.8rem;">(+' + (periods.length - 1) + ' weitere)</span>' : '';
+                  return label ? '<div class="card-subtitle" style="margin-top:2px;">' + label + more + '</div>' : '';
+                }
+                return p.executionDate
+                  ? '<div class="card-subtitle" style="margin-top:2px;">' +
+                      formatDate(p.executionDate) +
+                      (p.executionTime ? ' ' + formatTime(p.executionTime) : '') + '</div>'
+                  : '';
+              })() +
             '</div>' +
             '<span class="badge ' + badgeClass + '" style="margin-left:8px;flex-shrink:0;">' + esc(status) + '</span>' +
           '</div>' +
@@ -411,6 +440,45 @@
     // =============================================
     //  FORM VIEW
     // =============================================
+
+    // ---------------------------------------------------------------
+    // Execution periods UI
+    // ---------------------------------------------------------------
+    function renderPeriodsUI() {
+      var container = document.getElementById('periodsContainer');
+      if (!container) return;
+      container.innerHTML = executionPeriods.map(function(p, i) {
+        return (
+          '<div style="display:flex;gap:8px;align-items:flex-end;margin-bottom:6px;" id="periodRow-' + i + '">' +
+            '<div style="flex:1;">' +
+              '<label class="form-label" style="font-size:.78rem;color:var(--color-text-secondary);">Von</label>' +
+              '<input type="date" class="form-input" value="' + (p.start || '') + '" ' +
+                'onchange="executionPeriods[' + i + '].start=this.value">' +
+            '</div>' +
+            '<div style="flex:1;">' +
+              '<label class="form-label" style="font-size:.78rem;color:var(--color-text-secondary);">Bis</label>' +
+              '<input type="date" class="form-input" value="' + (p.end || '') + '" ' +
+                'onchange="executionPeriods[' + i + '].end=this.value">' +
+            '</div>' +
+            (executionPeriods.length > 1
+              ? '<button type="button" onclick="removePeriod(' + i + ')" ' +
+                  'style="padding:4px 10px;font-size:1.1rem;line-height:1;background:none;border:none;cursor:pointer;color:var(--color-text-secondary);align-self:flex-end;margin-bottom:2px;" ' +
+                  'title="Zeitraum entfernen">&times;</button>'
+              : '<span style="width:28px;display:inline-block;"></span>') +
+          '</div>'
+        );
+      }).join('');
+    }
+
+    function addPeriod() {
+      executionPeriods.push({ start: '', end: '' });
+      renderPeriodsUI();
+    }
+
+    function removePeriod(i) {
+      executionPeriods.splice(i, 1);
+      renderPeriodsUI();
+    }
 
     function openForm(id) {
       // Access guard: workers may only open projects assigned to them
@@ -496,6 +564,15 @@
       document.getElementById('fLng').value = p.lng || '';
       document.getElementById('fDate').value = p.executionDate || '';
       document.getElementById('fTime').value = p.executionTime || '';
+      // Load periods — migrate from old single-range fields if needed
+      if (p.executionPeriods && p.executionPeriods.length) {
+        executionPeriods = p.executionPeriods.map(function(x) { return { start: x.start || '', end: x.end || '' }; });
+      } else if (p.executionStart || p.executionEnd) {
+        executionPeriods = [{ start: p.executionStart || '', end: p.executionEnd || '' }];
+      } else {
+        executionPeriods = [{ start: '', end: '' }];
+      }
+      renderPeriodsUI();
       document.getElementById('fRoughStaking').checked = !!p.roughStaking;
       document.getElementById('fHeightRef').checked = !!p.heightRef;
       document.getElementById('fConditionsSigned').checked = !!p.conditionsSigned;
@@ -526,6 +603,8 @@
       document.getElementById('projectForm').reset();
       accessFiles = [];
       renderFileGrid();
+      executionPeriods = [{ start: '', end: '' }];
+      renderPeriodsUI();
       DOC_TYPES.forEach(function(_, i) {
         document.querySelectorAll('input[name="doc_' + i + '"]').forEach(function(r) {
           r.checked = false;
@@ -799,6 +878,7 @@
         lng: document.getElementById('fLng').value.trim(),
         executionDate: document.getElementById('fDate').value,
         executionTime: document.getElementById('fTime').value,
+        executionPeriods: executionPeriods.filter(function(p) { return p.start || p.end; }),
         roughStaking: document.getElementById('fRoughStaking').checked,
         heightRef: document.getElementById('fHeightRef').checked,
         conditionsSigned: document.getElementById('fConditionsSigned').checked,
@@ -840,6 +920,15 @@
         document.getElementById(c.warn).classList.toggle('visible', empty);
         if (empty) hasWarning = true;
       });
+
+      // Period validation: for each filled period, end must not be before start
+      var periodWarning = data.executionPeriods.some(function(p) {
+        return p.start && p.end && p.end < p.start;
+      });
+      // Show warning inside the first offending period row via a shared indicator
+      var wPeriod = document.getElementById('wPeriods');
+      if (wPeriod) wPeriod.classList.toggle('visible', periodWarning);
+      if (periodWarning) hasWarning = true;
 
       var id = currentId || generateId();
 

@@ -118,10 +118,41 @@
       limitDate.setDate(limitDate.getDate() + 7);
       var limitStr = limitDate.toISOString().split('T')[0];
 
+      function projectOverlapsWindow(p, todayStr, limitStr) {
+        if (p.executionDate && p.executionDate >= todayStr && p.executionDate <= limitStr) return true;
+        var periods = p.executionPeriods && p.executionPeriods.length ? p.executionPeriods
+          : (p.executionStart || p.executionEnd) ? [{ start: p.executionStart || '', end: p.executionEnd || '' }] : [];
+        return periods.some(function(r) {
+          return r.start && r.end && r.start <= limitStr && r.end >= todayStr;
+        });
+      }
+      function projectSortKey(p) {
+        if (p.executionDate) return p.executionDate + (p.executionTime || '');
+        var periods = p.executionPeriods && p.executionPeriods.length ? p.executionPeriods
+          : (p.executionStart ? [{ start: p.executionStart }] : []);
+        return periods.length ? (periods[0].start || '') : '';
+      }
+      function projectDateLabel(p, todayStr) {
+        var periods = p.executionPeriods && p.executionPeriods.length ? p.executionPeriods
+          : (p.executionStart || p.executionEnd) ? [{ start: p.executionStart || '', end: p.executionEnd || '' }] : [];
+        if (periods.length) {
+          var first = periods[0];
+          var label = (first.start && first.end)
+            ? formatDate(first.start) + ' &ndash; ' + formatDate(first.end)
+            : (first.start ? 'ab ' + formatDate(first.start) : '');
+          var more = periods.length > 1 ? ' (+' + (periods.length - 1) + ' weitere)' : '';
+          return label + more;
+        }
+        var isToday = p.executionDate === todayStr;
+        return isToday
+          ? ('Heute' + (p.executionTime ? ', ' + p.executionTime.substring(0, 5) : ''))
+          : (formatDate(p.executionDate) + (p.executionTime ? ', ' + p.executionTime.substring(0, 5) : ''));
+      }
+
       var items = filterProjectsByAccess(getActiveItems('projects')).filter(function(p) {
-        return p.executionDate && p.executionDate >= todayStr && p.executionDate <= limitStr;
+        return projectOverlapsWindow(p, todayStr, limitStr);
       }).sort(function(a, b) {
-        return (a.executionDate + (a.executionTime || '')).localeCompare(b.executionDate + (b.executionTime || ''));
+        return projectSortKey(a).localeCompare(projectSortKey(b));
       });
 
       if (items.length === 0) {
@@ -130,10 +161,7 @@
       }
 
       var rows = items.map(function(p) {
-        var isToday = p.executionDate === todayStr;
-        var dateLabel = isToday
-          ? ('Heute' + (p.executionTime ? ', ' + p.executionTime.substring(0, 5) : ''))
-          : (formatDate(p.executionDate) + (p.executionTime ? ', ' + p.executionTime.substring(0, 5) : ''));
+        var dateLabel = projectDateLabel(p, todayStr);
         var badgeClass = p.status === 'abgeschlossen' ? 'badge-abgeschlossen' : 'badge-aktiv';
         var badge = '<span class="badge ' + badgeClass + '">' + (p.status || 'aktiv') + '</span>';
         return makeRow('projects.html?id=' + p.id, p.name || 'Projekt', dateLabel, badge);

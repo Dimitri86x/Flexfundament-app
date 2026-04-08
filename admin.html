@@ -23,6 +23,9 @@
     .btn-assign { font-size: .75rem; min-height: 30px; padding: 3px 10px; flex-shrink: 0; }
     .btn-deactivated { color: var(--color-error) !important; border-color: var(--color-error) !important; }
     .badge-pending { background: #f5a623; color: #fff; font-size: .7rem; padding: 2px 7px; border-radius: 10px; }
+    .admin-tabs { display: flex; gap: 0; border: 1px solid var(--color-border); border-radius: var(--radius); overflow: hidden; margin-bottom: var(--spacing-md); }
+    .admin-tab-btn { flex: 1; padding: 9px 4px; font-size: .85rem; font-weight: 500; background: var(--color-bg); border: none; cursor: pointer; color: var(--color-text-secondary); transition: background .15s, color .15s; }
+    .admin-tab-btn.active { background: var(--color-primary); color: #fff; }
   </style>
 </head>
 <body>
@@ -30,7 +33,13 @@
   <div class="page" id="page">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--spacing-md);">
       <div class="section-title" style="margin:0;">Benutzerverwaltung</div>
-      <button class="btn btn-primary" style="font-size:.8rem;min-height:36px;padding:4px 12px;" onclick="toggleAddUserForm()">+ Benutzer anlegen</button>
+      <button class="btn btn-primary" id="addUserBtn" style="font-size:.8rem;min-height:36px;padding:4px 12px;" onclick="toggleAddUserForm()">+ Benutzer anlegen</button>
+    </div>
+
+    <!-- Tab bar -->
+    <div class="admin-tabs">
+      <button class="admin-tab-btn active" data-tab="users"    onclick="switchTab('users')">Benutzer</button>
+      <button class="admin-tab-btn"        data-tab="projects" onclick="switchTab('projects')">Projekte</button>
     </div>
 
     <!-- Add-user form (hidden by default) -->
@@ -65,7 +74,8 @@
     <div id="userList">
       <div class="card"><p class="list-empty">Lade Benutzer…</p></div>
     </div>
-    <div id="sectionActivity"></div>
+    <div id="projectView" style="display:none;"></div>
+    <div id="sectionActivity" style="display:none;"></div>
   </div>
 
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
@@ -80,7 +90,9 @@
     var allProjects         = [];   // getActiveItems('projects')
     var allPendingUsers     = {};   // emailKey → { email, claimedUid?, claimedAt? }
     var allPendingUsersMeta = {};   // emailKey → admin-set data (role, active, assignedProjectIds, …)
-    var expandedUid         = null; // which user's project list is open
+    var expandedUid         = null; // which user's project list is open (user tab)
+    var expandedProjId      = null; // which project's user list is open (project tab)
+    var activeTab           = 'users';
 
     initApp(function() {
       if (currentUserRole !== 'admin') {
@@ -252,7 +264,19 @@
       if (allProjects.length === 0) {
         return '<p class="list-empty" style="padding:var(--spacing-sm) 0;font-size:.85rem;">Keine Projekte vorhanden.</p>';
       }
-      return allProjects.map(function(p) {
+      return (
+        '<input type="search" id="projSearch-' + uid + '" placeholder="Projekt suchen…" ' +
+          'oninput="filterProjectList(\'' + uid + '\')" ' +
+          'style="width:100%;padding:6px 8px;margin-bottom:var(--spacing-sm);border:1px solid var(--color-border);border-radius:var(--radius);font-size:.85rem;box-sizing:border-box;">' +
+        '<div id="projRows-' + uid + '">' + renderProjectRows(uid, allProjects) + '</div>'
+      );
+    }
+
+    function renderProjectRows(uid, projects) {
+      if (projects.length === 0) {
+        return '<p class="list-empty" style="padding:var(--spacing-sm) 0;font-size:.85rem;">Keine Treffer.</p>';
+      }
+      return projects.map(function(p) {
         var assigned = !!(
           allAssignments[p.id] &&
           allAssignments[p.id].assignedTo &&
@@ -268,6 +292,17 @@
           '</div>'
         );
       }).join('');
+    }
+
+    function filterProjectList(uid) {
+      var q = (document.getElementById('projSearch-' + uid).value || '').toLowerCase().trim();
+      var filtered = q
+        ? allProjects.filter(function(p) {
+            return (p.name || '').toLowerCase().includes(q) ||
+                   (p.client || '').toLowerCase().includes(q);
+          })
+        : allProjects;
+      document.getElementById('projRows-' + uid).innerHTML = renderProjectRows(uid, filtered);
     }
 
     // ---------------------------------------------------------------
@@ -557,6 +592,204 @@
       var d = document.createElement('div');
       d.textContent = str || '';
       return d.innerHTML;
+    }
+
+    // ---------------------------------------------------------------
+    // Tab switching
+    // ---------------------------------------------------------------
+    function switchTab(tab) {
+      activeTab = tab;
+      document.getElementById('userList').style.display      = tab === 'users'    ? '' : 'none';
+      document.getElementById('projectView').style.display  = tab === 'projects' ? '' : 'none';
+      document.getElementById('sectionActivity').style.display = tab === 'projects' ? '' : 'none';
+      document.getElementById('addUserBtn').style.display   = tab === 'users'    ? '' : 'none';
+      if (tab !== 'users') {
+        document.getElementById('addUserCard').style.display = 'none';
+      }
+      document.querySelectorAll('.admin-tab-btn').forEach(function(btn) {
+        btn.classList.toggle('active', btn.getAttribute('data-tab') === tab);
+      });
+      if (tab === 'projects') renderProjectView();
+    }
+
+    // ---------------------------------------------------------------
+    // Project-centric view
+    // ---------------------------------------------------------------
+    function renderProjectView() {
+      var el = document.getElementById('projectView');
+      if (!el) return;
+
+      if (allProjects.length === 0) {
+        el.innerHTML = '<div class="card"><p class="list-empty">Keine Projekte vorhanden.</p></div>';
+        return;
+      }
+
+      // Only show worker-role users; admins have implicit full access
+      var workerUids = Object.keys(allUsers).filter(function(uid) {
+        return allUsers[uid].role !== 'admin';
+      }).sort(function(a, b) {
+        return (allUsers[a].displayName || '').localeCompare(allUsers[b].displayName || '');
+      });
+
+      el.innerHTML = allProjects.map(function(p) {
+        var assignedCount = workerUids.filter(function(uid) {
+          return allAssignments[p.id] &&
+                 allAssignments[p.id].assignedTo &&
+                 allAssignments[p.id].assignedTo[uid];
+        }).length;
+        var isOpen = expandedProjId === p.id;
+
+        return (
+          '<div class="card admin-user-card" id="pcard-' + esc(p.id) + '">' +
+            '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">' +
+              '<div style="min-width:0;">' +
+                '<div class="admin-user-name" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(p.name || 'Projekt') + '</div>' +
+                (p.client ? '<div class="admin-user-email">' + esc(p.client) + '</div>' : '') +
+              '</div>' +
+              '<span class="badge ' + (p.status === 'abgeschlossen' ? 'badge-abgeschlossen' : 'badge-aktiv') + '" style="flex-shrink:0;">' +
+                esc(p.status || 'aktiv') +
+              '</span>' +
+            '</div>' +
+            '<button onclick="toggleProjPanel(\'' + esc(p.id) + '\')" ' +
+              'class="btn btn-secondary" ' +
+              'style="width:100%;margin-top:var(--spacing-sm);text-align:left;justify-content:space-between;">' +
+              '<span>Mitarbeiter (' + assignedCount + ' zugewiesen)</span>' +
+              '<span>' + (isOpen ? '▴' : '▾') + '</span>' +
+            '</button>' +
+            (isOpen
+              ? '<div class="admin-project-list">' + renderUserListForProject(p.id, workerUids) + '</div>'
+              : '') +
+          '</div>'
+        );
+      }).join('');
+    }
+
+    function renderUserListForProject(projectId, workerUids) {
+      if (!workerUids || workerUids.length === 0) {
+        return '<p class="list-empty" style="padding:var(--spacing-sm) 0;font-size:.85rem;">Keine Mitarbeiter vorhanden.</p>';
+      }
+
+      // Split into assigned / unassigned, each group sorted by name
+      var assigned   = workerUids.filter(function(uid) {
+        return !!(allAssignments[projectId] && allAssignments[projectId].assignedTo && allAssignments[projectId].assignedTo[uid]);
+      });
+      var unassigned = workerUids.filter(function(uid) { return assigned.indexOf(uid) === -1; });
+
+      // Summary bar + bulk-action button
+      var total       = workerUids.length;
+      var assignedCnt = assigned.length;
+      var allOn       = assignedCnt === total;
+      var bulkLabel   = allOn ? 'Alle entfernen' : 'Alle zuweisen';
+      var bulkFn      = allOn
+        ? 'bulkUnassignProject(\'' + esc(projectId) + '\')'
+        : 'bulkAssignProject(\''   + esc(projectId) + '\')';
+
+      var summary =
+        '<div style="display:flex;align-items:center;justify-content:space-between;' +
+              'padding:6px 0 8px;border-bottom:1px solid var(--color-border);margin-bottom:4px;">' +
+          '<span style="font-size:.8rem;color:var(--color-text-secondary);">' +
+            assignedCnt + ' von ' + total + ' Mitarbeitern zugewiesen' +
+          '</span>' +
+          '<button onclick="' + bulkFn + '" class="btn btn-secondary" ' +
+            'style="font-size:.72rem;min-height:26px;padding:2px 8px;">' +
+            bulkLabel +
+          '</button>' +
+        '</div>';
+
+      var rows = assigned.concat(unassigned).map(function(uid) {
+        var u      = allUsers[uid];
+        var isAssigned = assigned.indexOf(uid) !== -1;
+        var active = u.active !== false;
+        var role   = u.role === 'admin' ? 'Admin' : 'Mitarbeiter';
+        return (
+          '<div class="admin-project-row">' +
+            '<div style="flex:1;min-width:0;">' +
+              '<div class="admin-project-name">' + esc(u.displayName || u.email || uid) + '</div>' +
+              '<div style="font-size:.72rem;color:var(--color-text-secondary);">' +
+                role + ' · ' +
+                (active ? '✓ Aktiv' : '<span style="color:var(--color-error);">✗ Gesperrt</span>') +
+              '</div>' +
+            '</div>' +
+            '<button onclick="toggleAssignmentProjView(\'' + esc(projectId) + '\',\'' + uid + '\',' + isAssigned + ')" ' +
+              'class="btn btn-assign ' + (isAssigned ? 'btn-primary' : 'btn-secondary') + '">' +
+              (isAssigned ? 'Zugewiesen ✓' : 'Zuweisen') +
+            '</button>' +
+          '</div>'
+        );
+      }).join('');
+
+      return summary + rows;
+    }
+
+    function bulkAssignProject(projectId) {
+      var adminUid = firebase.auth().currentUser.uid;
+      var updates  = {};
+      Object.keys(allUsers).forEach(function(uid) {
+        if (allUsers[uid].role === 'admin') return;
+        updates['projectAssignments/' + projectId + '/assignedTo/' + uid] = true;
+      });
+      updates['projectAssignments/' + projectId + '/assignedAt'] = Date.now();
+      updates['projectAssignments/' + projectId + '/assignedBy'] = adminUid;
+      db.ref().update(updates).then(function() {
+        if (!allAssignments[projectId]) allAssignments[projectId] = {};
+        if (!allAssignments[projectId].assignedTo) allAssignments[projectId].assignedTo = {};
+        Object.keys(allUsers).forEach(function(uid) {
+          if (allUsers[uid].role !== 'admin') allAssignments[projectId].assignedTo[uid] = true;
+        });
+        renderProjectView();
+        showToast('Alle Mitarbeiter zugewiesen.', 'success');
+      }).catch(function(err) { showToast('Fehler: ' + err.message, 'error'); });
+    }
+
+    function bulkUnassignProject(projectId) {
+      var writes = [];
+      Object.keys(allUsers).forEach(function(uid) {
+        if (allUsers[uid].role === 'admin') return;
+        if (allAssignments[projectId] && allAssignments[projectId].assignedTo && allAssignments[projectId].assignedTo[uid]) {
+          writes.push(db.ref('projectAssignments/' + projectId + '/assignedTo/' + uid).remove());
+        }
+      });
+      if (writes.length === 0) { renderProjectView(); return; }
+      Promise.all(writes).then(function() {
+        if (allAssignments[projectId] && allAssignments[projectId].assignedTo) {
+          Object.keys(allUsers).forEach(function(uid) {
+            delete allAssignments[projectId].assignedTo[uid];
+          });
+        }
+        renderProjectView();
+        showToast('Alle Zuweisungen entfernt.', 'success');
+      }).catch(function(err) { showToast('Fehler: ' + err.message, 'error'); });
+    }
+
+    function toggleProjPanel(projectId) {
+      expandedProjId = expandedProjId === projectId ? null : projectId;
+      renderProjectView();
+    }
+
+    // Same logic as toggleAssignment() but re-renders project view instead of user view
+    function toggleAssignmentProjView(projectId, uid, currentlyAssigned) {
+      var adminUid = firebase.auth().currentUser.uid;
+      if (currentlyAssigned) {
+        db.ref('projectAssignments/' + projectId + '/assignedTo/' + uid).remove().then(function() {
+          if (allAssignments[projectId] && allAssignments[projectId].assignedTo) {
+            delete allAssignments[projectId].assignedTo[uid];
+          }
+          renderProjectView();
+          showToast('Zuweisung entfernt.', 'success');
+        }).catch(function(err) { showToast('Fehler: ' + err.message, 'error'); });
+      } else {
+        var updates = {};
+        updates['projectAssignments/' + projectId + '/assignedTo/' + uid] = true;
+        updates['projectAssignments/' + projectId + '/assignedAt']         = Date.now();
+        updates['projectAssignments/' + projectId + '/assignedBy']         = adminUid;
+        db.ref().update(updates).then(function() {
+          if (!allAssignments[projectId]) allAssignments[projectId] = {};
+          if (!allAssignments[projectId].assignedTo) allAssignments[projectId].assignedTo = {};
+          allAssignments[projectId].assignedTo[uid] = true;
+          renderProjectView();
+          showToast('Projekt zugewiesen.', 'success');
+        }).catch(function(err) { showToast('Fehler: ' + err.message, 'error'); });
+      }
     }
 
     // ---------------------------------------------------------------

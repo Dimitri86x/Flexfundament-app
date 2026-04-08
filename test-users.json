@@ -1,0 +1,95 @@
+{
+  "pendingUsers": {
+    "dimitrireitenbach_googlemail_com": {
+      "email": "dimitrireitenbach@googlemail.com"
+    },
+    "admin2_test_example": {
+      "email": "admin2@test.example"
+    },
+    "worker_bremen_test_example": {
+      "email": "worker_bremen@test.example"
+    },
+    "worker_multi_test_example": {
+      "email": "worker_multi@test.example"
+    },
+    "worker_kein_test_example": {
+      "email": "worker_kein@test.example"
+    }
+  },
+  "pendingUsersMeta": {
+    "dimitrireitenbach_googlemail_com": {
+      "displayName": "Dimitri Reitenbach",
+      "role": "admin",
+      "active": true,
+      "assignedProjectIds": {
+        "19d6dab2_placeholder_P01": true,
+        "19d6dab2_placeholder_P02": true,
+        "19d6dab2_placeholder_P03": true,
+        "19d6dab2_placeholder_P04": true,
+        "19d6dab2_placeholder_P05": true,
+        "19d6dab2_placeholder_P06": true,
+        "19d6dab2_placeholder_P07": true,
+        "19d6dab2_placeholder_P08": true,
+        "19d6dab2_placeholder_P09": true,
+        "19d6dab2_placeholder_P10": true
+      },
+      "createdAt": 1775661818647,
+      "createdByUid": "seeder",
+      "createdByName": "Seeder"
+    },
+    "admin2_test_example": {
+      "displayName": "Test Admin 2",
+      "role": "admin",
+      "active": true,
+      "assignedProjectIds": {
+        "19d6dab2_placeholder_P01": true,
+        "19d6dab2_placeholder_P02": true,
+        "19d6dab2_placeholder_P03": true,
+        "19d6dab2_placeholder_P04": true,
+        "19d6dab2_placeholder_P05": true,
+        "19d6dab2_placeholder_P06": true,
+        "19d6dab2_placeholder_P07": true,
+        "19d6dab2_placeholder_P08": true,
+        "19d6dab2_placeholder_P09": true,
+        "19d6dab2_placeholder_P10": true
+      },
+      "createdAt": 1775661818647,
+      "createdByUid": "seeder",
+      "createdByName": "Seeder"
+    },
+    "worker_bremen_test_example": {
+      "displayName": "Mitarbeiter Bremen",
+      "role": "worker",
+      "active": true,
+      "assignedProjectIds": {
+        "19d6dab2_placeholder_P01": true
+      },
+      "createdAt": 1775661818647,
+      "createdByUid": "seeder",
+      "createdByName": "Seeder"
+    },
+    "worker_multi_test_example": {
+      "displayName": "Mitarbeiter Multi",
+      "role": "worker",
+      "active": true,
+      "assignedProjectIds": {
+        "19d6dab2_placeholder_P02": true,
+        "19d6dab2_placeholder_P03": true,
+        "19d6dab2_placeholder_P07": true
+      },
+      "createdAt": 1775661818647,
+      "createdByUid": "seeder",
+      "createdByName": "Seeder"
+    },
+    "worker_kein_test_example": {
+      "displayName": "Mitarbeiter Kein",
+      "role": "worker",
+      "active": true,
+      "assignedProjectIds": {},
+      "createdAt": 1775661818647,
+      "createdByUid": "seeder",
+      "createdByName": "Seeder"
+    }
+  },
+  "note": "Diese Datei nur zur Dokumentation. Benutzer müssen über admin.html angelegt werden (echter Firebase-Flow)."
+}
